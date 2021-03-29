@@ -1,7 +1,9 @@
 #!/bin/bash
 
 ###############################################################################
-# Description	: This script uses CDO and parallel to get the ACCESS-OM2 variables needed for " " paper. To run it, you will need access to GADI supercomputer at NCI, projects " "
+# Description	: This script uses CDO and parallel to get the ACCESS-OM2
+#               variables needed for " " paper. To run it, you will need access
+#               to GADI supercomputer at NCI, projects " "
 # Args        :
 #     wdir = path to directory in which save data
 # Author      : Julia Neme

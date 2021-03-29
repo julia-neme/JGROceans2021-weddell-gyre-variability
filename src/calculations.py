@@ -1,9 +1,10 @@
 ###############################################################################
-# Description	: This script uses raw output from ACCESS-OM2 model to perform offline calculations and saves the output to wdir.
-# Args        :
+# Description	: This script uses raw output from ACCESS-OM2 model to perform
+#                 offline calculations and saves the output to wdir.
+# Args          :
 #     wdir = path to directory in which save data
-# Author      : Julia Neme
-# Email       : j.neme@unsw.edu.au
+# Author        : Julia Neme
+# Email         : j.neme@unsw.edu.au
 ###############################################################################
 
 import dask.distributed as dask
