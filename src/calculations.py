@@ -24,20 +24,22 @@ def ice_coords_corrections(key):
     """
 
     aice = xr.open_dataset(wdir+'/aice_m-monthly-1958_2018-'+key+'deg-global.nc')
-    time = xr.open_dataset(wdir+'/net_sfc_heating-monthly-1958_2018-'+key+'deg.nc')['time']
-    grid = xr.open_dataset(wdir+'data/raw_outputs/ocean_grid-'+key+'deg.nc')['ht']
+    time = xr.open_dataset(wdir+'/sea_level-monthly-1958_2018-'+key+'deg.nc')['time']
+    grid = xr.open_dataset(wdir+'/ocean_grid-'+key+'deg.nc')['ht']
 
     aice['time'] = time['time'].values
     aice.coords['ni'] = grid['xt_ocean'].values
     aice.coords['nj'] = grid['yt_ocean'][:len(aice['nj'])].values
     aice = aice.rename(({'ni':'xt_ocean', 'nj':'yt_ocean'}))
 
-    aice.sel(xt_ocean = slice(-70, 80), yt_ocean = slice(-80, -50)).to_netcdf(wdir+'/aice_m-monthly-1958_2018-'+key+'deg.nc')
+    aice = aice.sel(xt_ocean = slice(-70, 80), yt_ocean = slice(-80, -50))
+    aice.to_netcdf(wdir+'/aice_m-monthly-1958_2018-'+key+'deg.nc')
     os.remove(wdir+'/aice_m-monthly-1958_2018-'+key+'deg-global.nc')
 
 def barotropic_streamfunction(key):
 
-    psi_b = xr.open_dataset(wdir+'/tx_trans_int_z-monthly-1958_2018-'+key+'deg.nc')['tx_trans_int_z'].cumsum(dim = 'yt_ocean')/(1035*1e6)
+    tx = xr.open_dataset(wdir+'/tx_trans_int_z-monthly-1958_2018-'+key+'deg.nc')
+    psi_b = tx['tx_trans_int_z'].cumsum(dim = 'yt_ocean')/(1035*1e6)
 
     dset = xr.DataArray(psi_b, name = 'psi_b')
     dset.to_netcdf(wdir+'/psi_b-monthly-1958_2018-'+key+'deg.nc', mode = 'w')
@@ -66,15 +68,16 @@ def buoyancy_flux(key):
 
 def sfc_stress_curl(key):
 
-    tau_x = xr.open_dataset(wdir+'data/raw_outputs/tau_x-monthly-1958_2018-'+key+'deg.nc')['tau_x']
-    tau_y = xr.open_dataset(wdir+'data/raw_outputs/tau_y-monthly-1958_2018-'+key+'deg.nc')['tau_y']
+    tau_x = xr.open_dataset(wdir+'/tau_x-monthly-1958_2018-'+key+'deg.nc')['tau_x']
+    tau_y = xr.open_dataset(wdir+'/tau_y-monthly-1958_2018-'+key+'deg.nc')['tau_y']
 
     R = 6371e3
     f = 2*7.292e-5*np.sin(tau_x['yu_ocean']*np.pi/180)
     deg_to_m_lon = np.pi/180*R*np.cos(np.deg2rad(tau_x['yu_ocean']))
     deg_to_m_lat = np.pi/180*R
 
-    sfc_stress_curl = tau_y.differentiate('xu_ocean')/deg_to_m_lon - tau_x.differentiate('yu_ocean')/deg_to_m_lat
+    sfc_stress_curl = tau_y.differentiate('xu_ocean')/deg_to_m_lon -
+                      tau_x.differentiate('yu_ocean')/deg_to_m_lat
 
     dset = xr.DataArray(sfc_stress_curl, name = 'sfc_stress_curl')
     dset.to_netcdf(wdir+'/sfc_stress_curl-monthly-1958_2018-'+key+'deg.nc', mode = 'w')
