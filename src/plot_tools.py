@@ -57,9 +57,11 @@ def map_weddell(size_x, size_y):
 
     return fig, axs
 
-def curstom_colormaps(name):
+def custom_colormaps(name):
 
     import matplotlib.colors as mcolors
+    import matplotlib.pyplot as plt
+    import numpy as np
 
     if name == 'bathymetry':
         cmap_colors = ['#EDF3F3', '#D8E6E7', '#C5DADB', '#B1CDCE', '#A2BEC1',
@@ -68,4 +70,55 @@ def curstom_colormaps(name):
         cmap = mcolors.LinearSegmentedColormap.from_list(name = None,
                colors = cmap_colors, N = 250, gamma = 1)
 
+    elif name == 'ts_diags':
+        cmap = mcolors.LinearSegmentedColormap.from_list(name = None,
+               colors = plt.get_cmap('Blues')(np.linspace(.4, 1, 5)), N = 5)
+
     return cmap
+
+def ts_diagram():
+
+    import gsw
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize = (95/25.4, 80/25.4))
+    ax.plot([32.5, 35.25], [1.5, 1.5], color = 'k', linewidth = 1)
+    ax.plot([32.5, 35.25], [-1.9, -1.9], color = 'k', linewidth = 1)
+    ax.plot([34.57, 34.57], [3, 1.5], color = 'k', linewidth = 1)
+    ax.plot([34.57, 34.57, 35.25], [1.5, 0, 0], color = 'k', linewidth = 1)
+    ax.plot([34.63, 34.63, 35.25], [0, -0.7, -0.7], color = 'k', linewidth = 1)
+    ax.plot([34.63, 34.6, 34.6, 35.25], [-0.7, -0.7, -1.5, -1.5], color = 'k',
+            linewidth = 1)
+    ax.text(32.55, 1.55, 'ACC')
+    ax.text(32.55, -1.75, 'SW')
+    ax.text(32.55, -2.15, 'ISW')
+    ax.text(35.2, 1.55, 'CDW', horizontalalignment = 'right')
+    ax.text(35.2, 0.05, 'WDW', horizontalalignment = 'right')
+    ax.text(35.2, -0.65, 'WSDW', horizontalalignment = 'right')
+    ax.text(35.2, -1.45, 'WSBW', horizontalalignment = 'right')
+    ax.set_xlim(32.5, 35.25)
+    ax.set_ylim(-2.5, 3)
+    ax.set_xlabel('Salinity [PSU]')
+    ax.set_ylabel('$\\theta$ [$^{\circ}$C]')
+
+    temp = np.arange(-3, 4, .1)
+    salt = np.arange(31, 36, .01)
+    temp_mesh, salt_mesh = np.meshgrid(temp, salt)
+    sigma = gsw.sigma0(salt_mesh, temp_mesh)
+
+    cc = ax.contour(salt_mesh, temp_mesh, sigma, 10, colors = 'k',
+                    interpolation = 'none', linewidths = .7, zorder = 0);
+    ax.clabel(cc, inline = True, fontsize = 7)
+
+    depth = gsw.z_from_p(np.arange(0, 6000, 10), -65).values
+    depth = np.transpose(depth*np.ones([len(ts_hydro['station']),
+                                        len(ts_hydro['pressure'])]))
+    depth_tag  = np.empty(np.shape(depth))
+    depth_tag[(depth > -200)] = 0
+    depth_tag[(depth <= -200) & (depth > -5000)] = 1
+    depth_tag[(depth <= -500) & (depth > -1000)] = 2
+    depth_tag[(depth <= -1000) & (depth > -3000)] = 3
+    depth_tag[(depth <= -3000)] = 4
+    depth_tag = depth_tag.astype('int')
+
+    return fig, ax, depth_tag

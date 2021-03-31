@@ -6,6 +6,7 @@
 # Email         : j.neme@unsw.edu.au
 ###############################################################################
 
+import analysis_tools as at
 import cmocean
 import dask.distributed as dsk
 import plot_tools
@@ -46,7 +47,7 @@ def plot_figure_1():
          markersize = 4,  label = 'Hydrography'),
          Line2D([0], [0], color = 'blue', lw = 1.5, label = 'February'),
          Line2D([0], [0], color = 'red', lw = 1.5, label = 'September')]
-    bath_cmap = plot_tools.curstom_colormaps('bathymetry')
+    bath_cmap = plot_tools.custom_colormaps('bathymetry')
 
     fig, axs = plot_tools.map_weddell(190, 95)
     c = axs.contourf(bath['xt_ocean'], bath['yt_ocean'], bath, cmap = bath_cmap,
@@ -125,14 +126,14 @@ def plot_figure_3():
 
     import matplotlib.dates as mdates
 
-    eta_mod, eta_obs = load_sea_level(keys)
-    gyre_boundary = get_gyre_boundary(keys, 'mean')
+    eta_mod, eta_obs = at.load_sea_level(keys)
+    gyre_boundary = at.get_gyre_boundary(keys, 'mean')
     isobath_1000m = xr.open_dataset(wdir+'/isobath_1000m.nc')
 
     rval = {}; pval = {}
     for k, t in zip(keys, ['a', 'b', 'c']):
         eta_obs['time'] = eta_mod[k]['time'].values
-        rval[k], pval[k] = correlation_with_gstr(eta_obs['DOT'], eta_mod[k])
+        rval[k], pval[k] = at.correlation_with_gstr(eta_obs['DOT'], eta_mod[k])
 
         fig, axs = plot_tools.map_weddell(190, 95)
         c = axs.contourf(rval[k]['xt_ocean'], rval[k]['yt_ocean'], rval[k],
@@ -176,4 +177,67 @@ def plot_figure_3():
     plt.legend(frameon = False);
     axs.text(-0.05, 0.93, 'd)', horizontalalignment = 'right',
              transform = axs.transAxes);
-    plt.savefig(wdir+'/figre_3d.jpg')
+    plt.savefig(wdir+'/figure_3d.jpg')
+
+def plot_figure_4():
+
+    #### TS diagrams
+    ts_hydro = at.load_temp_salt_hydrography()
+    ts_model = {}
+    for k in keys:
+        ts_model[k] = at.load_temp_salt_model()
+        # Mask where there are no obs
+        ts_model[k]['pot_temp'] = ts_model[k]['pot_temp']
+                                    .where(ts_hydro['pot_temp'] != np.nan)
+        ts_model[k]['salt'] = ts_model[k]['salt']
+                                    .where(ts_hydro['salinity'] != np.nan)
+
+    hydr_cmap = plot_tools.custom_colormaps('ts_diags')
+
+    fig, ax, d_tag = plot_tools.ts_diagram()
+    sc = ax.scatter(ts_hydro['salinity'], ts_hydro['pot_temp'], c = d_tag,
+                    s = 0.1, cmap = hydr_cmap);
+    cbar = fig.colorbar(sc, ax = ax, orientation = 'vertical', shrink = .8,
+                        format = mticker.ScalarFormatter());
+    cbar.set_label('Depth [m]')
+    cbar.ax.invert_yaxis()
+    cbar.set_ticks([0, .8, 1.6, 2.4, 3.2])
+    cbar.set_ticklabels([0, 200, 500, 1000, 3000])
+    ax.text(0.03, 0.93, 'Observations', horizontalalignment = 'left',
+            transform = ax.transAxes,
+            bbox = dict(boxstyle = 'round', facecolor = 'white'));
+    ax.text(-0.15, 0.95, 'a)', horizontalalignment = 'left',
+            transform = ax.transAxes);
+    plt.savefig(wdir+'/figure_4a_1.jpg')
+
+    for k, t in zip(keys, ['a', 'b', 'c']):
+        fig, ax, d_tag = plot_tools.ts_diagram()
+        sc = ax.scatter(ts_model['salinity'], ts_model['pot_temp'], c = d_tag,
+                        s = 0.1, cmap = hydr_cmap);
+        cbar = fig.colorbar(sc, ax = ax, orientation = 'vertical', shrink = .8,
+                            format = mticker.ScalarFormatter());
+        cbar.set_label('Depth [m]')
+        cbar.ax.invert_yaxis()
+        cbar.set_ticks([0, .8, 1.6, 2.4, 3.2])
+        cbar.set_ticklabels([0, 200, 500, 1000, 3000])
+        ax.text(0.03, 0.93, 'ACCESS-OM2-'+k, horizontalalignment = 'left',
+                transform = ax.transAxes,
+                bbox = dict(boxstyle = 'round', facecolor = 'white'));
+        ax.text(-0.15, 0.95, t+')', horizontalalignment = 'left',
+                transform = ax.transAxes);
+        plt.savefig(wdir+'/figure_4'+t+'_1.jpg')
+
+    #### A12
+
+###############################################################################
+
+def __main__():
+
+    clrs, alph = plot_tools.set_rcParams()
+
+    plot_figure_1()
+    plot_figure_2()
+    plot_figure_3()
+
+if __name__ == "__main__":
+    main()
