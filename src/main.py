@@ -47,7 +47,7 @@ def plot_figure_1():
          Line2D([0], [0], color = 'blue', lw = 1.5, label = 'February'),
          Line2D([0], [0], color = 'red', lw = 1.5, label = 'September')]
     bath_cmap = plot_tools.curstom_colormaps('bathymetry')
-    
+
     fig, axs = plot_tools.map_weddell(190, 95)
     c = axs.contourf(bath['xt_ocean'], bath['yt_ocean'], bath, cmap = bath_cmap,
                       levels = np.arange(0, 6500, 500),
@@ -78,4 +78,102 @@ def plot_figure_1():
     axs.legend(handles = legend_elements, ncol = 2, loc = 'lower center',
                bbox_to_anchor = (0.68, 0.03), frameon = False)
 
-    plt.savefig(wdir+'figure_1.jpg')
+    plt.savefig(wdir+'/figure_1.jpg')
+
+def plot_figure_2():
+
+    eta_mod, eta_obs = load_sea_level(keys)
+    gyre_boundary = get_gyre_boundary(keys, 'mean')
+    isobath_1000m = xr.open_dataset(wdir+'/isobath_1000m.nc')
+
+    fig, axs = plot_tools.map_weddell(190, 95)
+    c = axs.contourf(eta_obs['xt_ocean'], eta_obs['yt_ocean'], eta_obs['MDT'],
+                     levels = np.arange(-216, -130, 2),
+                     cmap = cmocean.cm.tarn_r, extend = 'max',
+                     transform = ccrs.PlateCarree())
+    axs.plot(isobath_1000m['x'], isobath_1000m['y'], color = 'k', linewidth = 1,
+             transform = ccrs.PlateCarree())
+    axs.text(0.98, 0.08, 'Observations', horizontalalignment = 'right',
+             transform = axs.transAxes, bbox = dict(boxstyle = 'round',
+             facecolor = 'white'));
+    axs.text(-0.08, 0.93, 'a)', horizontalalignment = 'right',
+             transform = axs.transAxes);
+    cbar = fig.colorbar(c, ax = axs, orientation = 'horizontal', shrink = .6)
+    cbar.set_label('Sea level [cm]')
+    plt.savefig(wdir+'/figure_2a.jpg')
+
+    for k, t in zip(keys, ['b', 'c', 'd']):
+        fig, axs = plot_tools.map_weddell(190, 95)
+        c = axs.contourf(eta_mod[k]['xt_ocean'], eta_mod[k]['yt_ocean'],
+                         eta_mod[k]-eta_obs, levels = np.arange(-30, 31, 1),
+                         cmap = 'RdBu_r', extend = 'both',
+                         transform = ccrs.PlateCarree())
+        axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1,
+                 transform = ccrs.PlateCarree())
+        axs.plot(bndy[k][:,0], bndy[k][:,1], color = 'k', linestyle = 'solid',
+                 linewidth = 1.5, transform = ccrs.PlateCarree())
+        axs.text(0.98, 0.08, 'ACCESS-OM2-'+k, horizontalalignment = 'right',
+                 transform = axs.transAxes,
+                 bbox = dict(boxstyle = 'round', facecolor = 'white'));
+        axs.text(-0.08, 0.93, t+')', horizontalalignment = 'right',
+                 transform = axs.transAxes);
+        cbar = fig.colorbar(c, ax = axs, orientation = 'horizontal', shrink =.6)
+        cbar.set_label('Sea level [cm]')
+        plt.savefig(wdir+'/figure_2'+t+'.jpg')
+
+def plot_figure_3():
+
+    import matplotlib.dates as mdates
+
+    eta_mod, eta_obs = load_sea_level(keys)
+    gyre_boundary = get_gyre_boundary(keys, 'mean')
+    isobath_1000m = xr.open_dataset(wdir+'/isobath_1000m.nc')
+
+    rval = {}; pval = {}
+    for k, t in zip(keys, ['a', 'b', 'c']):
+        eta_obs['time'] = eta_mod[k]['time'].values
+        rval[k], pval[k] = correlation_with_gstr(eta_obs['DOT'], eta_mod[k])
+
+        fig, axs = plot_tools.map_weddell(190, 95)
+        c = axs.contourf(rval[k]['xt_ocean'], rval[k]['yt_ocean'], rval[k],
+                         levels = np.arange(-1, 1.1, .1), cmap = 'RdBu_r',
+                         transform = ccrs.PlateCarree())
+        axs.contourf(pval[k]['xt_ocean'], pval[k]['yt_ocean'],
+                     pval[k].where(pval[k]<0.05), colors = ['none'],
+                     hatches = ['xx'], transform = ccrs.PlateCarree())
+        axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1,
+                 transform = ccrs.PlateCarree())
+        axs.plot(bndy[k][:,0], bndy[k][:,1], color = 'k', linestyle = 'solid',
+                 linewidth = 1.5, transform = ccrs.PlateCarree())
+        axs.text(0.98, 0.08, 'ACCESS-OM2-'+k, horizontalalignment = 'right',
+                 transform = axs.transAxes,
+                 bbox = dict(boxstyle = 'round', facecolor = 'white'));
+        axs.text(-0.08, 0.93, t+')', horizontalalignment = 'right',
+                 transform = axs.transAxes);
+        cbar = fig.colorbar(c, ax = axs, orientation = 'horizontal', shrink =.6)
+        cbar.set_label('Correlation coefficient')
+        plt.savefig(wdir+'/figure_3'+t+'.jpg')
+
+    RMSE = {}
+    for k in keys:
+        mod = eta_mod[k].sel(xt_ocean = slice(-30, 30),
+                             yt_ocean = slice(-70, -60))
+        # Make same time axis (if not align fails)
+        eta_obs['time'] = eta_mod[k]['time'].values
+        obs = eta_obs['DOT'].sel(xt_ocean = slice(-30, 30),
+                                 yt_ocean = slice(-70, -60))
+        mod_a = mod - mod.mean(dim = 'time')
+        obs_a = obs - obs.mean(dim = 'time')
+        RMSE[k] = ((mod_a - obs_a)**2).mean(dim = ['xt_ocean', 'yt_ocean'])
+
+    fig = plt.figure(figsize = (150/25.4, 65/25.4))
+    axs = fig.add_subplot()
+    for k in keys:
+        axs.plot(RMSE[k]['time'], np.sqrt(RMSE[k]), color = clrs[k],
+                 alpha = alph[k], linewidth = 1.5, label = 'ACCESS-OM2-'+k)
+    axs.xaxis.set_minor_locator(mdates.MonthLocator())
+    axs.set_ylabel('RMSE [cm]');
+    plt.legend(frameon = False);
+    axs.text(-0.05, 0.93, 'd)', horizontalalignment = 'right',
+             transform = axs.transAxes);
+    plt.savefig(wdir+'/figre_3d.jpg')
