@@ -181,7 +181,7 @@ def plot_figure_3():
 
 def plot_figure_4():
 
-    #### TS diagrams
+    ##### TS diagrams
     ts_hydro = at.load_temp_salt_hydrography()
     ts_model = {}
     for k in keys:
