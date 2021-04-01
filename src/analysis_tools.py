@@ -294,3 +294,137 @@ def load_temp_salt_model(key):
     ts_model = xr.merge([temp_model, salt_model])
 
     return ts_model
+
+def a12_hydrography():
+
+    import gsw
+    from joblib import Parallel, delayed
+
+    dirs = ['a12_nc_ctd', 's04a_nc_ctd', 'sr04_e_nc_ctd', 'a12_1999a_nc_ctd',
+            '06AQ20050122_nc_ctd', '06AQ20071128_nc_ctd', '06AQ20080210_nc_ctd',
+            '06AQ20101128', '06AQ20141202_nc_ctd']
+    ht = xr.open_dataset(wdir+'/ocean_grid-01deg.nc')['ht']
+    ht = ht.sel(xt_ocean = slice(-30, 30), yt_ocean = slice(-80, 50))
+    p_interp = np.arange(0, 6001, 1)
+
+    for d in direc:
+        files = [y for x in os.walk(''+d+'/')
+                 for y in glob.glob(os.path.join(x[0], '*.nc'))]
+        files = np.sort(files)
+        station = {}; n = 0;
+        for file in files:
+            station[n] = xr.open_dataset(file)
+            n += 1
+        N = len(station)
+
+        if 'CTDTMP' in station[0].data_vars:
+            temp_name = 'CTDTMP'
+            salt_name = 'CDTSAL'
+        else:
+            temp_name = 'temperature'
+            salt_name = 'salinity'
+
+        temp = np.empty([len(p_interp), N])*np.nan
+        salt = np.empty([len(p_interp), N])*np.nan
+        lon = np.empty(N)*np.nan
+        lat = np.empty(N)*np.nan
+        tim = [station[0]['time'].values]
+        for st in range(0, N, 1):
+            temp[:, st] = station[st][temp_name].dropna(dim = 'pressure')
+            temp[:, st] = temp[:, st].interp(pressure = p_interp,
+                                             method = 'nearest')
+            salt[:, st] = station[st][salt_name].dropna(dim = 'pressure')
+            salt[:, st] = salt[:, st].interp(pressure = p_interp,
+                                             method = 'nearest')
+            lon[st] = station[st]['longitude']
+            lat[st] = station[st]['latitude']
+            if st != 0:
+                tim.append(station[st]['time'].values)
+
+        idx_shallow = []
+        for st in range(0, N, 1):
+            depth = ht.sel(xt_ocean = station[st]['longitude'],
+                           yt_ocean = station[st]['latitude'],
+                           method = 'nearest')
+            count_nans = np.isnan(salt[:, st]).sum()
+            # Depth of deepest station
+            z = gsw.z_from_p(station[st]['pressure'][-1],
+                             station[st]['latitude'])
+            # Distance of deepest station from the bottom
+            distance_to_bottom = depth - z.values
+            if count_nans > 0.8*distance_to_bottom:
+                idx_shallow.append(st)
+        temp = np.delete(temp, idx_shallow, axis = 1)
+        salt = np.delete(salt, idx_shallow, axis = 1)
+        lon = np.delete(lon, idx_shallow)
+        lat = np.delete(lat, idx_shallow)
+        tim = np.delete(tim, idx_shallow)
+
+        temp_xarray = xr.DataArray(temp, name = 'temperature',
+                                   dims = ['pressure', 'station'],
+                                   coords = {'pressure':p_interp,
+                                   'station':np.arange(0, len(lon), 1)})
+        temp_array.expand_dims({'lon':lon, 'lat':lat, 'time':tim})
+        salt_array = xr.DataArray(salt, name = 'salinity',
+                                   dims = ['pressure', 'station'],
+                                   coords = {'pressure':p_interp,
+                                   'station':np.arange(0, len(lon), 1)})
+        salt_array.expand_dims({'lon':lon, 'lat':lat, 'time':tim})
+        lon_array = xr.DataArray(lon, name = 'lon', dims = ['station'],
+                                 coords = {'station':np.arange(0, len(lon), 1)})
+        lat_array = xr.DataArray(lat, name = 'lat', dims = ['station'],
+                                 coords = {'station':np.arange(0, len(lon), 1)})
+        t_array = xr.DataArray(tim, name = 'time', dims = ['station'],
+                               coords = {'station':np.arange(0, len(lon), 1)})
+        dset = xr.merge([temp_array, salt_array lon_array, lat_array, t_array])
+        dset = dset.sortby('lat')
+
+        idx_A12 = np.where((dset['lon'] <= 2) & (dset['lon'] >= -2) &
+                           (dset['lat'] > -75) & (dset['lat'] <= -55))[0]
+        # Projections onto A12
+        xori = dset['lon'][idx_A12]
+        yori = dset['lat'][idx_A12]
+        v = np.array([0, -55+69])
+        u = np.transpose(np.array([xori, yori + 69]))
+        pr = [np.dot(u, v)/(np.sum(v**2))*v[0],
+              np.dot(u, v)/(np.sum(v**2))*v[1] - 69]
+        xi = pr[0]
+        yi = pr[1]
+        # Remove points that are > 0.7 degrees away from the transect
+        dist = np.sqrt((xori-xi)**2 + (yori-yi)**2)
+        if np.shape(np.where(dist.values > 0.5)[0] != 0):
+            xi = np.delete(xi, np.where(dist.values > 0.5)[0])
+            yi = np.delete(yi, np.where(dist.values > 0.5)[0])
+            xori = np.delete(xori, np.where(dist.values > 0.5)[0])
+            yori = np.delete(yori, np.where(dist.values > 0.5)[0])
+            idx_A12 = np.delete(idx_A12, np.where(dist.values > 0.5)[0])
+
+        # Project to A12 (Xori onto Xi)
+        dset_on_A12 = Parallel(n_jobs = -1)(delayed(projection_onto_A12)(dset, var, idx_A12, p, xori, yori, xi, yi) for p in range(len(dset['pressure'])))
+        dset_on_A12 = np.squeeze(dset_on_A12)
+
+        # Define a standard A12
+        xf = np.zeros(20)
+        yf = np.linspace(-69, -55, 20)
+
+        var_interp_xarray = interpolation_to_standard_A12(dset_on_A12, var, dset['pressure'], (xi, yi), (xf, yf))
+        var_uninterp_xarray = xr.DataArray(dset[var][:, idx_A12], name = var, dims = dset.dims, coords = {'pressure':dset['pressure'], 'station':idx_A12})
+        var_uninterp_xarray = xr.merge([var_uninterp_xarray, dset['lon'][idx_A12], dset['lat'][idx_A12], dset['time'][idx_A12]])
+
+
+
+
+
+
+
+
+
+
+
+
+        temp_interp[d], temp_uninterp[d] = interpolation_to_A12_main(temp[d], 'temperature')
+
+        if d == dirs[0]:
+            temp_A12 = temp_interp[d]
+        else:
+            temp_A12 = xr.concat([temp_A12, temp_interp[d]], dim = 'cruise')
