@@ -49,7 +49,7 @@ def map_weddell(size_x, size_y):
                     edgecolor = 'black', facecolor = 'white'))
     axs.set_xticks([-70, -50, -30, -10, 10, 30, 50, 70],
                    crs = ccrs.PlateCarree())
-    axs.set_yticks([-75, -70, -65, -60, -55]], crs = ccrs.PlateCarree())
+    axs.set_yticks([-75, -70, -65, -60, -55], crs = ccrs.PlateCarree())
     lon_formatter = LongitudeFormatter(zero_direction_label = True)
     lat_formatter = LatitudeFormatter()
     axs.xaxis.set_major_formatter(lon_formatter)
