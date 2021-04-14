@@ -185,12 +185,7 @@ def plot_figure_4():
     ts_hydro = at.load_temp_salt_hydrography()
     ts_model = {}
     for k in keys:
-        ts_model[k] = at.load_temp_salt_model()
-        # Mask where there are no obs
-        ts_model[k]['pot_temp'] = ts_model[k]['pot_temp']
-                                    .where(ts_hydro['pot_temp'] != np.nan)
-        ts_model[k]['salt'] = ts_model[k]['salt']
-                                    .where(ts_hydro['salinity'] != np.nan)
+        ts_model[k] = at.load_temp_salt_model(k)
 
     hydr_cmap = plot_tools.custom_colormaps('ts_diags')
 
@@ -212,8 +207,8 @@ def plot_figure_4():
 
     for k, t in zip(keys, ['a', 'b', 'c']):
         fig, ax, d_tag = plot_tools.ts_diagram()
-        sc = ax.scatter(ts_model['salinity'], ts_model['pot_temp'], c = d_tag,
-                        s = 0.1, cmap = hydr_cmap);
+        sc = ax.scatter(ts_model[k]['salinity'], ts_model[k]['pot_temp'],
+                        c = d_tag, s = 0.1, cmap = hydr_cmap);
         cbar = fig.colorbar(sc, ax = ax, orientation = 'vertical', shrink = .8,
                             format = mticker.ScalarFormatter());
         cbar.set_label('Depth [m]')
@@ -228,6 +223,9 @@ def plot_figure_4():
         plt.savefig(wdir+'/figure_4'+t+'_1.jpg')
 
     #### A12
+    a12_hydro = analysis_tools.a12_hydrography()
+    a12_averg = a12_hydro.mean(dim = 'cruise')
+    a12_averg_pot_rho = analysis_tools.potential_density(a12_averg)
 
 ###############################################################################
 
