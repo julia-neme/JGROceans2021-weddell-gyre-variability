@@ -19,7 +19,8 @@ wdir = input("Please directory where to save the data: ")
 ###############################################################################
 
 def plot_figure_1():
-
+    import cartopy.crs as ccrs
+    import numpy as np
     from matplotlib.lines import Line2D
 
     bath = xr.open_dataset(wdir+'/ocean_grid-01deg.nc')['ht']
@@ -229,7 +230,7 @@ def plot_figure_4():
 
 ###############################################################################
 
-def __main__():
+def main():
 
     clrs, alph = plot_tools.set_rcParams()
 
