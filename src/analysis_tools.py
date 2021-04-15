@@ -127,7 +127,7 @@ def gyre_boundary(keys, wdir, field):
 
     return bndy
 
-def edof():
+def edof(A):
     """
     Calculates effective degrees of freedom using the integral timescale as per
     Emery and Thompson's book.
@@ -146,15 +146,9 @@ def edof():
         T = integrate.trapz(c[:n])/c[0]
         edof = N/(2*T)
     else:
-
         N = len(A['time'])
-        N1 = N-1
         A = A - A.mean(dim = 'time')
-
-        points_ocean = np.where(A.isel(time = 0) != np.isnan(A.isel(time = 0)))
-        random_x = np.random.randint(0, len(A['xt_ocean']), size = 100)
-        random_y = np.random.randint(0, len(A['yt_ocean']), size = 100)
-
+        p = np.where(A.isel(time = 0) != np.isnan(A.isel(time = 0)))
         edof = np.empty(np.shape(A.isel(time = 0)))*np.nan
         for i in range(0, len(A['xt_ocean'])):
             for j in range(0, len(A['yt_ocean'])):
@@ -163,7 +157,7 @@ def edof():
                 else:
                     x = A.isel(xt_ocean = i, yt_ocean = j)
                     c = np.correlate(x, x, 'full')
-                    c = c[N1:]/(N-1-np.arange(0, N1+1, 1))
+                    c = c[N-1:]/(N-1-np.arange(0, N, 1))
                     n = 0
                     while (c[n] > 0) and (n < N/2):
                         n = n+1
@@ -188,7 +182,7 @@ def linear_correlation(A, B, *, lagB = False):
 
     edof_A = edof(A)
     edof_B = edof(B)
-    edof_m = np.nanmax([edof_A, edof_B])
+    edof_m = np.nanmean([edof_A, edof_B])
 
     A, B = xr.align(A, B)
     if lagB:
@@ -199,13 +193,13 @@ def linear_correlation(A, B, *, lagB = False):
     Bm = B.mean(dim = 'time')
     As = A.std(dim = 'time')
     Bs = B.std(dim = 'time')
-    covarnc = np.sum((A - Am)*(B - Bm), axis = 0) / (n-1)
-    rvalues = covarnc/(As * Bs)
-    t_s = rvalues * np.sqrt(edof_m)/np.sqrt(1 - rvalues**2)
-    pvalues = t.sf(np.abs(t_s), edof_m)*2
-    pvalues = xr.DataArray(pvalues, dims = rvalues.dims, coords = rvalues.coords)
+    covr = np.sum((A - Am)*(B - Bm), axis = 0) / (n-1)
+    rval = covr/(As * Bs)
+    t_s = rval * np.sqrt(edof_m)/np.sqrt(1 - rval**2)
+    pval = t.sf(np.abs(t_s), edof_m)*2
+    pval = xr.DataArray(pval, dims = rval.dims, coords = rval.coords)
 
-    return rvalues, pvalues
+    return rval, pval
 
 
 def load_temp_salt_hydrography():

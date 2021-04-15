@@ -130,7 +130,7 @@ def plot_figure_2():
 def plot_figure_3():
 
     etam, etao = at.load_sea_level(keys, wdir)
-    bndy = at.gyre_boundary(keys, 'mean')
+    bndy = at.gyre_boundary(keys, wdir, 'mean')
     iso1 = xr.open_dataset(wdir+'/isobath_1000m.nc')
     rval = {}; pval = {}
     for k, t in zip(keys, ['a', 'b', 'c']):
@@ -214,7 +214,7 @@ def plot_figure_4():
         cbar.ax.invert_yaxis()
         cbar.set_ticks([0, .8, 1.6, 2.4, 3.2])
         cbar.set_ticklabels([0, 200, 500, 1000, 3000])
-        ax.text(0.03, 0.93, 'ACCESS-OM2-'+k, horizontalalignment = 'left',
+        ax.text(0.03, 0.93, k+'$^{\circ}$', horizontalalignment = 'left',
                 transform = ax.transAxes,
                 bbox = dict(boxstyle = 'round', facecolor = 'white'));
         ax.text(-0.15, 0.95, t+')', horizontalalignment = 'left',
