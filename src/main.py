@@ -184,7 +184,7 @@ def plot_figure_4():
     ts_hydro = at.load_temp_salt_hydrography()
     ts_model = {}
     for k in keys:
-        ts_model[k] = at.load_temp_salt_model(k)
+        ts_model[k] = at.load_temp_salt_model(k, ts_hydro)
 
     hydr_cmap = plot_tools.custom_colormaps('ts_diags')
 

@@ -201,70 +201,79 @@ def linear_correlation(A, B, *, lagB = False):
 
     return rval, pval
 
-
 def load_temp_salt_hydrography():
 
     import gsw
     import numpy as np
     import os
+    import xarray as xr
     from glob import glob
+    from joblib import Parallel, delayed
 
+    def temp_parallel(file_name):
+        prof = xr.open_dataset(file_name)
+        if 'CTDTMP' in prof.data_vars:
+            temp_name = 'CTDTMP'
+        else:
+            temp_name = 'temperature'
+        temp = prof[temp_name]
+        p_unq, p_unq_idx = np.unique(prof['pressure'], return_index = True)
+        temp = temp[p_unq_idx].interp(pressure = np.arange(0, 6000, 10))
+        return temp
+    def salt_parallel(file_name):
+        prof = xr.open_dataset(file_name)
+        if 'CTDSAL' in prof:
+            salt_name = 'CTDSAL'
+        else:
+            salt_name = 'temperature'
+        salt = prof[salt_name]
+        p_unq, p_unq_idx = np.unique(prof['pressure'], return_index = True)
+        salt = salt[p_unq_idx].interp(pressure = np.arange(0, 6000, 10))
+        return salt
+    def time_parallel(file_name):
+        prof = xr.open_dataset(file_name)
+        year = prof['time.year'].item()
+        mnth = prof['time.month'].item()]]
+        return year, mnth
+    def lat_parallel(file_name):
+        lat = xr.open_dataset(file_name)['latitude']
+        return lat
+    def lon_parallel(file_name):
+        lon = xr.open_dataset(file_name)['longitude']
+        return lon
     # HAVE TO SEE HOW I MAKE THESE AVAILABLE
-    files = [y for x in os.walk('/scratch/e14/jn8053/cchdo_hydrography/')
+    fils = [y for x in os.walk('/scratch/e14/jn8053/cchdo_hydrography/')
              for y in glob(os.path.join(x[0], '*.nc'))]
-    station = {}; n = 0;
-    for file in files:
-        station[n] = xr.open_dataset(file)
-        n += 1
-    N = len(station)
+    temp = Parallel(n_jobs = -1)(delayed(temp_parallel)(file) for file in fils)
+    salt = Parallel(n_jobs = -1)(delayed(salt_parallel)(file) for file in fils)
+    y, m = Parallel(n_jobs = -1)(delayed(time_parallel)(file) for file in fils)
+    lat = Parallel(n_jobs = -1)(delayed(lat_parallel)(file) for file in fils)
+    lon = Parallel(n_jobs = -1)(delayed(lon_parallel)(file) for file in fils)
 
-    p = np.arange(0, 6000, 10)
-    PT = np.empty([len(p), N])*np.nan # Potential temperature
-    PS = np.empty([len(p), N])*np.nan # Practical salinity
-    lon = np.empty(N)
-    lat = np.empty(N)
-    for i in range(0, N):
-        if 'CTDSAL' in profiles[i].data_vars:
+    salt_abs = gsw.SA_from_SP(salt, salt['pressure'], lon, lat)
+    pot_temp = gsw.pt0_from_t(salt_abs, temp, temp['pressure'])
 
-            # Drop duplicates
-            p_unique, p_unique_idx = np.unique(station[i]['pressure'],
-                                               return_index = True)
-            PS[:, i] = station[i]['CTDSAL'][p_unique_idx].interp(pressure = p)
-            temp = station[i]['CTDTMP'][p_unique_idx].interp(pressure = p)
-            AS = gsw.SA_from_SP(PS[:,i], p, station[i]['longitude'].values,
-                                station[i]['latitude'].values)
-            PT[:, i] = gsw.pt0_from_t(AS, temp, p)
-
-        elif 'salinity' in profiles[i].data_vars:
-
-            p_unique, p_unique_idx = np.unique(profiles[i]['pressure'],
-                                               return_index = True)
-            PS[:, i] = station[i]['salinity'][p_unique_idx].interp(pressure = p)
-            temp = station[i]['temperature'][p_unique_idx].interp(pressure = p)
-            AS = gsw.SA_from_SP(PS[:,i], p, station[i]['longitude'].values,
-                                station[i]['latitude'].values)
-            PT[:, i] = gsw.pt0_from_t(AS, temp, p)
-
-        lon[i] = station[i]['longitude'].values
-        lat[i] = station[i]['latitude'].values
-
-    PS_xarray = xr.DataArray(PS, name = 'salinity',
-                             dims = ['pressure', 'station'],
-                             coords = {'pressure':p,
-                                       'station':np.arange(0, len(lon), 1)})
-    PT_xarray = xr.DataArray(PT, name = 'pot_temp',
-                             dims = ['pressure', 'station'],
-                             coords = {'pressure':p,
-                                       'station':np.arange(0, len(lon), 1)})
-    lon_array = xr.DataArray(lon, name = 'lon', dims = ['station'],
-                             coords = {'station':np.arange(0, len(lon), 1)})
-    lat_array = xr.DataArray(lat, name = 'lat', dims = ['station'],
-                             coords = {'station':np.arange(0, len(lon), 1)})
-    ts_hydro = xr.merge([PS_xarray, PT_xarray, lon_array, lat_array])
+    pot_temp_xr = xr.DataArray(pot_temp, name = 'pot_temp',
+                               dims = ['pressure', 'station'],
+                               coords = {'pressure':pot_temp['pressure'],
+                                         'station':np.arange(0, len(lon), 1)})
+    salt_xr = xr.DataArray(salt, name = 'salinity',
+                           dims = ['pressure', 'station'],
+                           coords = {'pressure':salt['pressure'],
+                                     'station':np.arange(0, len(lon), 1)})
+    year_xr = xr.DataArray(y, name = 'year', dims = ['station'],
+                          coords = {'station':np.arange(0, len(lon), 1)})
+    mnth_xr = xr.DataArray(m, name = 'month', dims = ['station'],
+                          coords = {'station':np.arange(0, len(lon), 1)})
+    lon_xr = xr.DataArray(lon, name = 'lon', dims = ['station'],
+                          coords = {'station':np.arange(0, len(lon), 1)})
+    lat_xr = xr.DataArray(lat, name = 'lat', dims = ['station'],
+                          coords = {'station':np.arange(0, len(lon), 1)})
+    ts_hydro = xr.merge([pot_temp_xr, salt_xr, year_xr, mnth_xr lon_xr, lat_xr])
 
     return ts_hydro
 
-def load_temp_salt_model(key):
+def load_temp_salt_model(key, ts_hydro):
 
     # CORRECT HOW WE LOAD..
     for k in keys:
@@ -275,56 +284,33 @@ def load_temp_salt_model(key):
             temp = xr.open_dataset(wdir+'data/raw_outputs/pot_temp-monthly-1958_2018-'+k+'deg.nc')['pot_temp'] - 273.15
             salt = xr.open_dataset(wdir+'data/raw_outputs/salt-monthly-1958_2018-'+k+'deg.nc')['salt']
 
-    files = [y for x in os.walk('/scratch/e14/jn8053/cchdo_hydrography/')
-             for y in glob(os.path.join(x[0], '*.nc'))]
-    station = {}; n = 0;
-    for file in files:
-        station[n] = xr.open_dataset(file)
-        n += 1
-    N = len(station)
-
-    # Get years + month of hydrography profiles
-    ym = [[station[0]['time.year'].item(), station[0]['time.month'].item()]]
-    for i in range(1, N):
-        ym.append([station[i]['time.year'].item(),
-                   station[i]['time.month'].item()])
-    ym = np.array(ym)
-
-    # Get years + month that don't repeat and grab that month from the model
-    unique = np.unique(ym, axis = 0)
-    t_unique = temp.sel(time = str(unique_times[0, 0])+'-'+f'{unique[0, 1]:02}',
-                        method = 'nearest')
-    s_unique = salt.sel(time = str(unique_times[0, 0])+'-'+f'{unique[0, 1]:02}',
-                        method = 'nearest')
-
-    # Get all the lat/lon from profiles from that year + month and select the
-    # nearest gridpoint from the model
-    idx = np.where((ym == unique[0, :]).all(axis = 1))[0]
-    lat_model = xr.DataArray(lat[idx], dims = 'station')
-    lon_model = xr.DataArray(lon[idx], dims = 'station')
-    temp_model = t_unique.sel(xt_ocean = lon_model, yt_ocean = lat_model,
-                              method = 'nearest').squeeze()
-    salt_model = s_unique.sel(xt_ocean = lon_model, yt_ocean = lat_model,
-                              method = 'nearest').squeeze()
-
-    # Iterate over the rest of the dates!
-    for i in range(1, len(unique[:, 0])):
-        t_unique = temp.sel(time = str(unique[i, 0])+'-'+f'{unique[i, 1]:02}',
-                            method = 'nearest')
-        s_unique = salt.sel(time = str(unique[i, 0])+'-'+f'{unique[i, 1]:02}',
-                            method = 'nearest')
-        idx = np.where((ym == unique[i, :]).all(axis = 1))[0]
-        lat_model = xr.DataArray(lat[idx], dims = 'station')
-        lon_model = xr.DataArray(lon[idx], dims = 'station')
-        temp_model = xr.concat([temp_model, t_unique.sel(xt_ocean = lon_model,
-                                yt_ocean = lat_model,
-                                method = 'nearest').squeeze()], dim = 'station')
-        salt_model = xr.concat([salt_model, s_uinque.sel(xt_ocean = lon_model,
-                                yt_ocean = lat_model,
-                                method = 'nearest').squeeze()], dim = 'station')
-
-
-    # Switch depth for pressure and interpolate
+    yrmh = np.array(ts_hydro['year'].values, ts_hydro['month'].values)
+    unqe = np.unique(yrmh, axis = 0)
+    temp_times = temp.sel(time = str(unqe[0,0])+'-'+f'{unqe[0,1]:02}',
+                          method = 'nearest')
+    salt_times = salt.sel(time = str(unqe[0,0])+'-'+f'{unqe[0,1]:02}',
+                          method = 'nearest')
+    idx = np.where((yrmh == unqe[0, :]).all(axis = 1))[0]
+    lat_model = xr.DataArray(ts_hydro['lat'][idx], dims = 'station')
+    lon_model = xr.DataArray(ts_hydro['lon'][idx], dims = 'station')
+    temp_model = temp_times.sel(xt_ocean = lon_model, yt_ocean = lat_model,
+                                method = 'nearest').squeeze()
+    salt_model = salt_times.sel(xt_ocean = lon_model, yt_ocean = lat_model,
+                                method = 'nearest').squeeze()
+    for i in range(1, len(unqe[:, 0])):
+        temp_times = temp.sel(time = str(unqe[i,0])+'-'+f'{unqe[i,1]:02}',
+                              method = 'nearest')
+        salt_times = salt.sel(time = str(unqe[i,0])+'-'+f'{unqe[i,1]:02}',
+                              method = 'nearest')
+        idx = np.where((rymh == unqe[i, :]).all(axis = 1))[0]
+        lat_model = xr.DataArray(ts_hydro['lat'][idx], dims = 'station')
+        lon_model = xr.DataArray(ts_hydro['lon'][idx], dims = 'station')
+        temp_times = temp_times.sel(xt_ocean = lon_model, yt_ocean = lat_model,
+                                    method = 'nearest').squeeze()
+        salt_times = salt_times.sel(xt_ocean = lon_model, yt_ocean = lat_model,
+                                    method = 'nearest').squeeze()
+        temp_model = xr.concat([temp_model, temp_times], dim = 'station')
+        salt_model = xr.concat([salt_model, salt_times], dim = 'station')
 
     p = gsw.p_from_z(-temp_model['st_ocean'], -65)
     temp_model['st_ocean'] = p
@@ -336,7 +322,12 @@ def load_temp_salt_model(key):
     salt_model = salt_model.interp(pressure = np.arange(0, 6000, 10))
     salt_model = salt_model.sortby('station')
 
-    ts_model = xr.merge([temp_model, salt_model])
+    salt_abs = gsw.SA_from_SP(salt_model, salt_model['pressure'],
+                              salt_model['xt_ocean'], salt_model['yt_ocean'])
+    pot_temp = gsw.pt0_from_t(salt_abs, temp_model, temp_model['pressure'])
+
+    ts_model = xr.merge([pot_temp, salt_model])
+    # SEGUIR ACA RENAME A POT TEMP ETC
     ts_model['pot_temp'] = ts_model['pot_temp'].where(ts_hydro['pot_temp'] != np.nan)
     ts_model['salt'] = ts_model['salt'].where(ts_hydro['salinity'] != np.nan)
 
