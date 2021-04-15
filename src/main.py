@@ -7,10 +7,18 @@
 ###############################################################################
 
 import analysis_tools as at
+import cartopy.crs as ccrs
 import cmocean
 import dask.distributed as dsk
-import plot_tools
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import plot_tools as pt
 import xarray as xr
+from glob import glob
+from joblib import Parallel, delayed
+from matplotlib.lines import Line2D
 
 clnt = dsk.Client()
 keys = ['1', '025', '01']
@@ -20,17 +28,13 @@ wdir = input("Directory where to save and look for: ")
 
 def plot_figure_1():
 
-    import cartopy.crs as ccrs
-    import numpy as np
-    from matplotlib.lines import Line2D
-
     bath = xr.open_dataset(wdir+'/ocean_grid-01deg.nc')['ht']
     iso1 = xr.open_dataset(wdir+'/isobath_1000m.nc')
     aice = xr.open_dataset(wdir+'/aice_m-monthly-1958_2018-01deg.nc')['aice_m']
     aice = aice.groupby('time.month').mean(dim = 'time')
-    aice_obs_feb = analysis_tools.g02202_aice('feb') # NEED TO DEFINE
-    aice_obs_sep = analysis_tools.g02202_aice('sep')
-    hyd_lat, hyd_lon = analysis_tools.hyd_lat_lon() # NEED TO DEFINE
+    aice_obs_feb = at.g02202_aice('feb')
+    aice_obs_sep = at.g02202_aice('sep')
+    hyd_lat, hyd_lon = at.hyd_lat_lon()
     a12_lat = np.array([-69.        , -68.26315789, -67.52631579, -66.78947368,
                         -66.05263158, -65.31578947, -64.57894737, -63.84210526,
                         -63.10526316, -62.36842105, -61.63157895, -60.89473684,
@@ -46,9 +50,9 @@ def plot_figure_1():
          markersize = 4,  label = 'Hydrography'),
          Line2D([0], [0], color = 'blue', lw = 1.5, label = 'February'),
          Line2D([0], [0], color = 'red', lw = 1.5, label = 'September')]
-    bath_cmap = plot_tools.custom_colormaps('bathymetry')
+    bath_cmap = pt.custom_colormaps('bathymetry')
 
-    fig, axs = plot_tools.map_weddell(190, 95)
+    fig, axs = pt.map_weddell(190, 95)
     c = axs.contourf(bath['xt_ocean'], bath['yt_ocean'], bath, cmap = bath_cmap,
                       levels = np.arange(0, 6500, 500),
                       transform = ccrs.PlateCarree())
@@ -81,16 +85,19 @@ def plot_figure_1():
 
 def plot_figure_2():
 
-    eta_mod, eta_obs = load_sea_level(keys)
-    gyre_boundary = get_gyre_boundary(keys, 'mean')
-    isobath_1000m = xr.open_dataset(wdir+'/isobath_1000m.nc')
+    etam, etao = at.load_sea_level(keys, wdir)
+    for k in keys:
+        etam[k] = etam[k].mean(dim = 'time')
+    etao = etao['MDT']
+    bndy = at.gyre_boundary(keys, wdir, 'mean')
+    iso1 = xr.open_dataset(wdir+'/isobath_1000m.nc')
 
-    fig, axs = plot_tools.map_weddell(190, 95)
-    c = axs.contourf(eta_obs['xt_ocean'], eta_obs['yt_ocean'], eta_obs['MDT'],
+    fig, axs = pt.map_weddell(190, 95)
+    c = axs.contourf(etao['xt_ocean'], etao['yt_ocean'], etao,
                      levels = np.arange(-216, -130, 2),
                      cmap = cmocean.cm.tarn_r, extend = 'max',
                      transform = ccrs.PlateCarree())
-    axs.plot(isobath_1000m['x'], isobath_1000m['y'], color = 'k', linewidth = 1,
+    axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1,
              transform = ccrs.PlateCarree())
     axs.text(0.98, 0.08, 'Observations', horizontalalignment = 'right',
              transform = axs.transAxes, bbox = dict(boxstyle = 'round',
@@ -102,16 +109,16 @@ def plot_figure_2():
     plt.savefig(wdir+'/figure_2a.jpg')
 
     for k, t in zip(keys, ['b', 'c', 'd']):
-        fig, axs = plot_tools.map_weddell(190, 95)
-        c = axs.contourf(eta_mod[k]['xt_ocean'], eta_mod[k]['yt_ocean'],
-                         eta_mod[k]-eta_obs, levels = np.arange(-30, 31, 1),
+        fig, axs = pt.map_weddell(190, 95)
+        c = axs.contourf(etam[k]['xt_ocean'], etam[k]['yt_ocean'],
+                         etam[k]-etao, levels = np.arange(-30, 31, 1),
                          cmap = 'RdBu_r', extend = 'both',
                          transform = ccrs.PlateCarree())
         axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1,
                  transform = ccrs.PlateCarree())
         axs.plot(bndy[k][:,0], bndy[k][:,1], color = 'k', linestyle = 'solid',
                  linewidth = 1.5, transform = ccrs.PlateCarree())
-        axs.text(0.98, 0.08, 'ACCESS-OM2-'+k, horizontalalignment = 'right',
+        axs.text(0.98, 0.08, k+'$^{\circ}$', horizontalalignment = 'right',
                  transform = axs.transAxes,
                  bbox = dict(boxstyle = 'round', facecolor = 'white'));
         axs.text(-0.08, 0.93, t+')', horizontalalignment = 'right',
@@ -122,29 +129,26 @@ def plot_figure_2():
 
 def plot_figure_3():
 
-    import matplotlib.dates as mdates
-
-    eta_mod, eta_obs = at.load_sea_level(keys)
-    gyre_boundary = at.get_gyre_boundary(keys, 'mean')
-    isobath_1000m = xr.open_dataset(wdir+'/isobath_1000m.nc')
-
+    etam, etao = at.load_sea_level(keys, wdir)
+    bndy = at.gyre_boundary(keys, 'mean')
+    iso1 = xr.open_dataset(wdir+'/isobath_1000m.nc')
     rval = {}; pval = {}
     for k, t in zip(keys, ['a', 'b', 'c']):
-        eta_obs['time'] = eta_mod[k]['time'].values
-        rval[k], pval[k] = at.correlation_with_gstr(eta_obs['DOT'], eta_mod[k])
+        etao['time'] = etam[k]['time'].values
+        rval[k], pval[k] = at.linear_correlation(etao['DOT'], etam[k])
 
-        fig, axs = plot_tools.map_weddell(190, 95)
+        fig, axs = pt.map_weddell(190, 95)
         c = axs.contourf(rval[k]['xt_ocean'], rval[k]['yt_ocean'], rval[k],
                          levels = np.arange(-1, 1.1, .1), cmap = 'RdBu_r',
                          transform = ccrs.PlateCarree())
         axs.contourf(pval[k]['xt_ocean'], pval[k]['yt_ocean'],
-                     pval[k].where(pval[k]<0.05), colors = ['none'],
+                     pval[k].where(pval[k] < 0.05), colors = ['none'],
                      hatches = ['xx'], transform = ccrs.PlateCarree())
         axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1,
                  transform = ccrs.PlateCarree())
         axs.plot(bndy[k][:,0], bndy[k][:,1], color = 'k', linestyle = 'solid',
                  linewidth = 1.5, transform = ccrs.PlateCarree())
-        axs.text(0.98, 0.08, 'ACCESS-OM2-'+k, horizontalalignment = 'right',
+        axs.text(0.98, 0.08, k+'$^{\circ}$', horizontalalignment = 'right',
                  transform = axs.transAxes,
                  bbox = dict(boxstyle = 'round', facecolor = 'white'));
         axs.text(-0.08, 0.93, t+')', horizontalalignment = 'right',
@@ -155,16 +159,13 @@ def plot_figure_3():
 
     RMSE = {}
     for k in keys:
-        mod = eta_mod[k].sel(xt_ocean = slice(-30, 30),
-                             yt_ocean = slice(-70, -60))
-        # Make same time axis (if not align fails)
-        eta_obs['time'] = eta_mod[k]['time'].values
-        obs = eta_obs['DOT'].sel(xt_ocean = slice(-30, 30),
-                                 yt_ocean = slice(-70, -60))
+        mod = etam[k].sel(xt_ocean = slice(-30, 30), yt_ocean = slice(-70, -60))
+        etao['time'] = etam[k]['time'].values
+        obs = etao['DOT'].sel(xt_ocean = slice(-30, 30),
+                              yt_ocean = slice(-70, -60))
         mod_a = mod - mod.mean(dim = 'time')
         obs_a = obs - obs.mean(dim = 'time')
         RMSE[k] = ((mod_a - obs_a)**2).mean(dim = ['xt_ocean', 'yt_ocean'])
-
     fig = plt.figure(figsize = (150/25.4, 65/25.4))
     axs = fig.add_subplot()
     for k in keys:
@@ -229,7 +230,7 @@ def plot_figure_4():
 
 def main():
 
-    clrs, alph = plot_tools.set_rcParams()
+    clrs, alph = pt.set_rcParams()
 
     plot_figure_1()
     plot_figure_2()

@@ -35,6 +35,22 @@ def set_rcParams():
 
     return clrs, alph
 
+def custom_colormaps(name):
+
+    import matplotlib.colors as mcolors
+
+    if name == 'bathymetry':
+        cmap_colors = ['#EDF3F3', '#D8E6E7', '#C5DADB', '#B1CDCE', '#A2BEC1',
+                       '#95AEB5', '#899DA8', '#7C8C9C', '#707B8F', '#636A84',
+                       '#565A77', '#4A4968']
+        cmap = mcolors.LinearSegmentedColormap.from_list(name = None,
+               colors = cmap_colors, N = 250, gamma = 1)
+    elif name == 'ts_diags':
+        cmap = mcolors.LinearSegmentedColormap.from_list(name = None,
+               colors = plt.get_cmap('Blues')(np.linspace(.4, 1, 5)), N = 5)
+
+    return cmap
+
 def map_weddell(size_x, size_y):
 
     """
@@ -56,25 +72,6 @@ def map_weddell(size_x, size_y):
     axs.yaxis.set_major_formatter(lat_formatter)
 
     return fig, axs
-
-def custom_colormaps(name):
-
-    import matplotlib.colors as mcolors
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-    if name == 'bathymetry':
-        cmap_colors = ['#EDF3F3', '#D8E6E7', '#C5DADB', '#B1CDCE', '#A2BEC1',
-                       '#95AEB5', '#899DA8', '#7C8C9C', '#707B8F', '#636A84',
-                       '#565A77', '#4A4968']
-        cmap = mcolors.LinearSegmentedColormap.from_list(name = None,
-               colors = cmap_colors, N = 250, gamma = 1)
-
-    elif name == 'ts_diags':
-        cmap = mcolors.LinearSegmentedColormap.from_list(name = None,
-               colors = plt.get_cmap('Blues')(np.linspace(.4, 1, 5)), N = 5)
-
-    return cmap
 
 def ts_diagram():
 

@@ -11,22 +11,121 @@
 
 def g02202_aice(month):
 
-    import glob
+    import matplotlib.pyplot as plt
+    import numpy as np
     import os
+    import xarray as xr
+    from glob import glob
+
     # from http://nsidc.org/data/G02202
     path = '/g/data3/hh5/tmp/cosima/observations/NOAA/G02202_V3'
-    files = glob(os.path.join(path, 'south/monthly/*.nc'))
+    fils = glob(os.path.join(path, 'south/monthly/*.nc'))
     drop = ['projection', 'seaice_conc_monthly_cdr',
             'stdev_of_seaice_conc_monthly_cdr',
             'melt_onset_day_seaice_conc_monthly_cdr',
-            'qa_of_seaice_conc_monthly_cdr', 'goddard_nt_seaice_conc_monthly', 'goddard_bt_seaice_conc_monthly']
-    aice = xr.open_mfdataset(files, drop_variables = drop)
-
+            'qa_of_seaice_conc_monthly_cdr', 'goddard_nt_seaice_conc_monthly',
+            'goddard_bt_seaice_conc_monthly']
+    aice = xr.open_mfdataset(fils, drop_variables = drop)
     aice = aice['goddard_merged_seaice_conc_monthly']
     aice = aice.groupby('time.month').mean(dim = 'time')
-    if month == 'feb':
 
+    if month == 'feb':
+        cset = plt.contour(aice['longitude'], aice['latitude'],
+                           aice.isel(month = 1), levels = [0.15])
+        siex = np.array([cset.allsegs[0][5][:,0], cset.allsegs[0][5][:,1]])
+        plt.close('all')
+        srt = siex[0,:].argsort()
+        siex = np.array([siex[0, srt], siex[1, srt]])
     elif month == 'sep':
+        cset = plt.contour(aice['longitude'], aice['latitude'],
+                           aice.isel(month = 9), levels = [0.15])
+        siex = np.array([cset.allsegs[0][3][:,0], cset.allsegs[0][3][:,1]])
+        plt.close('all')
+        srt = siex[0,:].argsort()
+        siex = np.array([siex[0, srt], siex[1, srt]])
+
+    return siex
+
+def hyd_lat_lon():
+
+    import os
+    import xarray as xr
+    from glob import glob
+    from joblib import Parallel, delayed
+
+    def lat_parallel(file_name):
+        lat = xr.open_dataset(file_name)['latitude']
+        return lat
+    def lon_parallel(file_name):
+        lon = xr.open_dataset(file_name)['longitude']
+        return lon
+
+    fils = [y for x in os.walk('/scratch/e14/jn8053/cchdo_hydrography/')
+            for y in glob(os.path.join(x[0], '*.nc'))]
+    lat = Parallel(n_jobs = -1)(delayed(lat_parallel)(file) for file in fils)
+    lon = Parallel(n_jobs = -1)(delayed(lon_parallel)(file) for file in fils)
+
+    return lat, lon
+
+def load_sea_level(keys, wdir):
+
+    import xarray as xr
+
+    """
+    Returns sea level from obs and model interpolated to the obs grid, with the
+    artificial global annual cycle removed and an offset applied.
+    """
+
+    obs = xr.open_dataset(wdir+'/CS2_combined_Southern_Ocean_2011-2016_regridded.nc')
+    obs = obs.rename(({'X':'xt_ocean', 'Y':'yt_ocean', 'date':'time'}))
+    obs = obs.sortby('yt_ocean', ascending = True)
+    obs['_lon_adj'] = xr.where(obs['xt_ocean'] > 80, obs['xt_ocean'] - 360,
+                               obs['xt_ocean'])
+    obs = obs.swap_dims({'xt_ocean': '_lon_adj'})
+    obs = obs.sel(**{'_lon_adj': sorted(obs._lon_adj)}).drop('xt_ocean'))
+    obs = obs.rename({'_lon_adj': 'xt_ocean'})
+
+    mod = {}
+    for k in keys:
+        mod[k] = xr.open_dataset(wdir+'/sea_level-monthly-2011_2016-'+k+'deg.nc')['sea_level']
+        mod[k] = mod[k].sel(time = slice('2011-01-01', '2017-01-01'))
+        mod[k] = mod[k]*100
+        # Filter an artifical global sea level annual cycle
+        etag = xr.open_dataset(wdir+'/eta_global-monthly-1958_2018-'+k+'deg.nc')['eta_global'].squeeze()
+        etag = etag.groupby('time.month').mean(dim = 'time')*100
+        mod[k] = mod[k].groupby('time.month') - etag
+        # Offset
+        msk = (obs['MDT'] != 0)
+        mod[k] = mod[k].interp(xt_ocean = obs['MDT']['xt_ocean'],
+                               yt_ocean = obs['MDT']['yt_ocean'])
+        mean_mod = mod[k].where(msk == True).mean()
+        mean_obs = obs['MDT'].where(msk == True).mean()
+        offs = mean_obs - mean_mod
+        mod[k] = (mod[k] + offs).sel(xt_ocean = slice(-70, 80),
+                                     yt_ocean = slice(-80, -50))
+    obs = obs.sel(xt_ocean = slice(-70, 80), yt_ocean = slice(-80, -50))
+
+    return mod, obs
+
+def gyre_boundary(keys, wdir, field):
+
+    import matplotlib.pyplot as plt
+    import xarray as xr
+
+    bndy = {}
+    for k in keys:
+        psib = xr.open_dataset(wdir+'/psi_b-monthly-1958_2018-'+k+'deg.nc')
+        if field == 'mean':
+            psib = psib['psi_b'].mean(dim = 'time')
+            cset = plt.contour(psib['xu_ocean'], psib['yt_ocean'], psib,
+                               levels = [-12])
+            if k == '01':
+                bndy[k] = cset.allsegs[0][1]
+            else:
+                bndy[k] = cset.allsegs[0][0]
+            plt.close('all')
+
+    return bndy
 
 def edof():
     """
@@ -37,18 +136,15 @@ def edof():
     from scipy import integrate
 
     if len(np.shape(A)) == 1:
-
         N = len(A)
-        N1 = N-1
         x = A - A.mean(dim = 'time')
         c = np.correlate(x, x, 'full')
-        c = c[N1:]/(N-1-np.arange(0, N1+1, 1))
+        c = c[N-1:]/(N-1-np.arange(0, N, 1))
         n = 0
         while (c[n] > 0) and (n < N/2):
             n = n+1
         T = integrate.trapz(c[:n])/c[0]
         edof = N/(2*T)
-
     else:
 
         N = len(A['time'])
@@ -111,69 +207,6 @@ def linear_correlation(A, B, *, lagB = False):
 
     return rvalues, pvalues
 
-def load_sea_level(keys):
-
-    """
-    Returns sea level from obs and model interpolated to the obs grid, with the
-    artificial global annual cycle removed and an offset applied.
-    """
-
-    obs = xr.open_dataset(wdir+'/CS2_combined_Southern_Ocean_2011-2016_regridded.nc')
-    obs = obs.rename(({'X':'xt_ocean', 'Y':'yt_ocean', 'date':'time'}))
-    # Flip latitude
-    obs = obs.sortby('yt_ocean', ascending = True)
-    # Correct longitude
-    obs['_lon_adj'] = xr.where(obs['xt_ocean'] > 80, obs['xt_ocean'] - 360,
-                               obs['xt_ocean'])
-    obs = (obs.swap_dims({'xt_ocean': '_lon_adj'})
-              .sel(**{'_long_adj': sorted(obs._lon_adj)}).drop('xt_ocean'))
-    obs = obs.sel(**{'_lon_adj': sorted(obs._lon_adj)}).drop('xt_ocean'))
-    eta_obs = obs.rename({'_lon_adj': 'xt_ocean'})
-
-    eta_mod = {}
-    for k in keys:
-        eta_mod[k] = xr.open_dataset(wdir+'/sea_level-monthly-1958_2018-'+k+'deg.nc')['sea_level']
-        eta_mod[k] = eta_mod[k].sel(time = slice('2011-01-01', '2017-01-01'))
-        eta_mod[k] = eta_mod[k]*100
-
-        # Filter an artifical global sea level annual cycle
-        eta_glo = xr.open_dataset(wdir+'/eta_global-monthly-1958_2018-'+k+'deg.nc')['eta_global'].squeeze()
-        eta_mod[k] = eta_mod[k].groupby('time.month') -
-                        eta_glo.groupby('time.month').mean(dim = 'time')
-
-        # Offset
-        mask = (eta_obs['MDT'] != 0)
-        eta_interp = eta_mod[k].interp(xt_ocean = eta_obs['MDT']['xt_ocean'],
-                                       yt_ocean = eta_obs['MDT']['yt_ocean'])
-
-        mean_mod = eta_interp.where(mask == True).mean()
-        mean_obs = eta_obs['MDT'].where(mask == True).mean()
-        offset = mean_obs - mean_mod
-        eta_mod[k] = (η_in + offs).sel(xt_ocean = slice(-70, 80),
-                                       yt_ocean = slice(-80, -50))
-    eta_obs = eta_obs.sel(xt_ocean = slice(-70, 80), yt_ocean = slice(-80, -50))
-
-    return eta_mod, eta_obs
-
-def get_gyre_boundary(keys, which_field):
-
-    import matplotlib.pyplot as plt
-
-    bndy = {}
-    for k in keys:
-        psi_b = xr.open_dataset(wdir+'/psi_b-monthly-1958_2018-'+k+'deg.nc')
-
-        if which_field == 'mean':
-            psi_b = psi_b['psi_b'].mean(dim = 'time')
-            cset = plt.contour(psi_b['xu_ocean'], psi_b['yt_ocean'], psi_b,
-                               levels = [-12])
-            if k == '01':
-                bndy[k] = cset.allsegs[0][3]
-            else:
-                bndy[k] = cset.allsegs[0][0]
-            plt.close('all')
-
-    return bndy
 
 def load_temp_salt_hydrography():
 
