@@ -14,31 +14,29 @@ import xarray as xr
 
 clnt = dsk.Client()
 keys = ['1', '025', '01']
-wdir = input("Please directory where to save the data: ")
+wdir = input("Directory where to save and look for: ")
 
 ###############################################################################
 
 def plot_figure_1():
+
     import cartopy.crs as ccrs
     import numpy as np
     from matplotlib.lines import Line2D
 
     bath = xr.open_dataset(wdir+'/ocean_grid-01deg.nc')['ht']
-    isobath_1000m = xr.open_dataset(wdir+'/isobath_1000m.nc')
+    iso1 = xr.open_dataset(wdir+'/isobath_1000m.nc')
     aice = xr.open_dataset(wdir+'/aice_m-monthly-1958_2018-01deg.nc')['aice_m']
     aice = aice.groupby('time.month').mean(dim = 'time')
-
-    aice_obs_feb = g02202_february_aice() # NEED TO DEFINE
-    aice_obs_sep = g02202_september_aice()
-
-    hydr_lat, hydr_lon = hydr_lat_lon() # NEED TO DEFINE
+    aice_obs_feb = analysis_tools.g02202_aice('feb') # NEED TO DEFINE
+    aice_obs_sep = analysis_tools.g02202_aice('sep')
+    hyd_lat, hyd_lon = analysis_tools.hyd_lat_lon() # NEED TO DEFINE
     a12_lat = np.array([-69.        , -68.26315789, -67.52631579, -66.78947368,
                         -66.05263158, -65.31578947, -64.57894737, -63.84210526,
                         -63.10526316, -62.36842105, -61.63157895, -60.89473684,
                         -60.15789474, -59.42105263, -58.68421053, -57.94736842,
                         -57.21052632, -56.47368421, -55.73684211, -55.        ])
     a12_lon = np.zeros(np.shape(a12_lat))
-
     legend_elements = [
          Line2D([0], [0], ls = '', lw = 0.5, marker = 'o',
          markerfacecolor = 'white', markeredgecolor = 'k', markersize = 6,
@@ -64,22 +62,21 @@ def plot_figure_1():
              linestyle = '--', linewidth = 1, transform = ccrs.PlateCarree())
     axs.plot(aice_obs_sep[0,:], aice_obs_sep[1,:], color = 'red',
              linestyle = '--', linewidth = 1, transform = ccrs.PlateCarree())
-    axs.plot(isobath_1000m['x'], isobath_1000m['y'], color = 'k',
-             linewidth = 1.2, transform = ccrs.PlateCarree())
+    axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1.2,
+             transform = ccrs.PlateCarree())
     axs.plot([-60, 10, 10, -60, -60], [-75, -75, -57, -57, -75],
              color = 'orange', linewidth = 1, linestyle = '--',
              transform = ccrs.PlateCarree(), zorder = 1)
     axs.plot([-60, 50, 50, -60, -60], [-75, -75, -57, -57, -75],
              color = 'orange', linewidth = 1, transform = ccrs.PlateCarree(),
              zorder = 1)
+    axs.plot(hyd_lon, hyd_lat, color = 'none', markersize = 2, marker = 'o',
+             markeredgecolor = 'k', markerfacecolor = 'None',
+             markeredgewidth = .2, transform = ccrs.PlateCarree(), zorder = 2)
     axs.scatter(a12_lon, a12_lat, s = 12, c = 'white', edgecolor = 'k',
                 marker = 'o', transform = ccrs.PlateCarree(), zorder = 3)
-    axs.plot(hydr_lon, hydr_lat, color = 'none', markersize = 2,
-             markeredgecolor = 'k', markerfacecolor = 'None', marker = 'o',
-             markeredgewidth = .2, transform = ccrs.PlateCarree(), zorder = 2)
     axs.legend(handles = legend_elements, ncol = 2, loc = 'lower center',
                bbox_to_anchor = (0.68, 0.03), frameon = False)
-
     plt.savefig(wdir+'/figure_1.jpg')
 
 def plot_figure_2():

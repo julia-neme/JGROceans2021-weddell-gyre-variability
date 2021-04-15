@@ -9,6 +9,25 @@
 
 ###############################################################################
 
+def g02202_aice(month):
+
+    import glob
+    import os
+    # from http://nsidc.org/data/G02202
+    path = '/g/data3/hh5/tmp/cosima/observations/NOAA/G02202_V3'
+    files = glob(os.path.join(path, 'south/monthly/*.nc'))
+    drop = ['projection', 'seaice_conc_monthly_cdr',
+            'stdev_of_seaice_conc_monthly_cdr',
+            'melt_onset_day_seaice_conc_monthly_cdr',
+            'qa_of_seaice_conc_monthly_cdr', 'goddard_nt_seaice_conc_monthly', 'goddard_bt_seaice_conc_monthly']
+    aice = xr.open_mfdataset(files, drop_variables = drop)
+
+    aice = aice['goddard_merged_seaice_conc_monthly']
+    aice = aice.groupby('time.month').mean(dim = 'time')
+    if month == 'feb':
+
+    elif month == 'sep':
+
 def edof():
     """
     Calculates effective degrees of freedom using the integral timescale as per
