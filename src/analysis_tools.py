@@ -214,95 +214,105 @@ def load_temp_salt_hydrography():
         prof = xr.open_dataset(file_name)
         if 'CTDTMP' in prof.data_vars:
             temp_name = 'CTDTMP'
+            salt_name = 'CTDSAL'
         else:
             temp_name = 'temperature'
+            salt_name = 'salinity'
         temp = prof[temp_name]
         p_unq, p_unq_idx = np.unique(prof['pressure'], return_index = True)
         temp = temp[p_unq_idx].interp(pressure = np.arange(0, 6000, 10))
-        return temp
+        salt = prof[salt_name]
+        salt = salt[p_unq_idx].interp(pressure = np.arange(0, 6000, 10))
+        salt_abs = gsw.SA_from_SP(salt, np.arange(0, 6000, 10),
+                                  prof['longitude'].values,
+                                  prof['latitude'].values)
+        pot_temp = gsw.pt0_from_t(salt_abs, temp, np.arange(0, 6000, 10))
+        return pot_temp.values
     def salt_parallel(file_name):
         prof = xr.open_dataset(file_name)
         if 'CTDSAL' in prof:
             salt_name = 'CTDSAL'
         else:
-            salt_name = 'temperature'
+            salt_name = 'salinity'
         salt = prof[salt_name]
         p_unq, p_unq_idx = np.unique(prof['pressure'], return_index = True)
         salt = salt[p_unq_idx].interp(pressure = np.arange(0, 6000, 10))
-        return salt
+        return salt.values
     def time_parallel(file_name):
         prof = xr.open_dataset(file_name)
         year = prof['time.year'].item()
-        mnth = prof['time.month'].item()]]
+        mnth = prof['time.month'].item()
         return year, mnth
     def lat_parallel(file_name):
         lat = xr.open_dataset(file_name)['latitude']
-        return lat
+        return lat.values
     def lon_parallel(file_name):
         lon = xr.open_dataset(file_name)['longitude']
-        return lon
+        return lon.values
+
     # HAVE TO SEE HOW I MAKE THESE AVAILABLE
     fils = [y for x in os.walk('/scratch/e14/jn8053/cchdo_hydrography/')
              for y in glob(os.path.join(x[0], '*.nc'))]
-    temp = Parallel(n_jobs = -1)(delayed(temp_parallel)(file) for file in fils)
+    pott = Parallel(n_jobs = -1)(delayed(temp_parallel)(file) for file in fils)
     salt = Parallel(n_jobs = -1)(delayed(salt_parallel)(file) for file in fils)
-    y, m = Parallel(n_jobs = -1)(delayed(time_parallel)(file) for file in fils)
+    yrmh = Parallel(n_jobs = -1)(delayed(time_parallel)(file) for file in fils)
+    yrmh = np.array(yrmh)
     lat = Parallel(n_jobs = -1)(delayed(lat_parallel)(file) for file in fils)
+    lat = np.squeeze(np.array(lat))
     lon = Parallel(n_jobs = -1)(delayed(lon_parallel)(file) for file in fils)
+    lon = np.squeeze(np.array(lon))
 
-    salt_abs = gsw.SA_from_SP(salt, salt['pressure'], lon, lat)
-    pot_temp = gsw.pt0_from_t(salt_abs, temp, temp['pressure'])
-
-    pot_temp_xr = xr.DataArray(pot_temp, name = 'pot_temp',
+    pot_temp_xr = xr.DataArray(np.transpose(pott), name = 'pot_temp',
                                dims = ['pressure', 'station'],
-                               coords = {'pressure':pot_temp['pressure'],
+                               coords = {'pressure':np.arange(0, 6000, 10),
                                          'station':np.arange(0, len(lon), 1)})
-    salt_xr = xr.DataArray(salt, name = 'salinity',
+    salt_xr = xr.DataArray(np.transpose(salt), name = 'salt',
                            dims = ['pressure', 'station'],
-                           coords = {'pressure':salt['pressure'],
+                           coords = {'pressure':np.arange(0, 6000, 10),
                                      'station':np.arange(0, len(lon), 1)})
-    year_xr = xr.DataArray(y, name = 'year', dims = ['station'],
+    year_xr = xr.DataArray(yrmh[:, 0], name = 'year', dims = ['station'],
                           coords = {'station':np.arange(0, len(lon), 1)})
-    mnth_xr = xr.DataArray(m, name = 'month', dims = ['station'],
+    mth_xr = xr.DataArray(yrmh[:, 1], name = 'month', dims = ['station'],
                           coords = {'station':np.arange(0, len(lon), 1)})
     lon_xr = xr.DataArray(lon, name = 'lon', dims = ['station'],
                           coords = {'station':np.arange(0, len(lon), 1)})
     lat_xr = xr.DataArray(lat, name = 'lat', dims = ['station'],
                           coords = {'station':np.arange(0, len(lon), 1)})
-    ts_hydro = xr.merge([pot_temp_xr, salt_xr, year_xr, mnth_xr lon_xr, lat_xr])
+    ts_hydro = xr.merge([pot_temp_xr, salt_xr, year_xr, mth_xr, lon_xr, lat_xr])
 
     return ts_hydro
 
-def load_temp_salt_model(key, ts_hydro):
+def load_temp_salt_model(key, wdir, ts_hydro):
 
+    import gsw
+    import numpy as np
+    import xarray as xr
     # CORRECT HOW WE LOAD..
-    for k in keys:
-        if k == '01':
-            temp = xr.open_dataset(wdir+'/pot_temp_hydrography-'+k+'deg.nc')['pot_temp'] - 273.15
-            salt = xr.open_dataset(wdir+'data/raw_outputs/salt_hydrography-'+k+'deg.nc')['salt']
-        else:
-            temp = xr.open_dataset(wdir+'data/raw_outputs/pot_temp-monthly-1958_2018-'+k+'deg.nc')['pot_temp'] - 273.15
-            salt = xr.open_dataset(wdir+'data/raw_outputs/salt-monthly-1958_2018-'+k+'deg.nc')['salt']
-
-    yrmh = np.array(ts_hydro['year'].values, ts_hydro['month'].values)
-    unqe = np.unique(yrmh, axis = 0)
-    temp_times = temp.sel(time = str(unqe[0,0])+'-'+f'{unqe[0,1]:02}',
+    if key == '01':
+        temp = xr.open_dataset(wdir+'/pot_temp_hydrography-'+key+'deg.nc')['pot_temp'] - 273.15
+        salt = xr.open_dataset(wdir+'/salt_hydrography-'+key+'deg.nc')['salt']
+    else:
+        temp = xr.open_dataset(wdir+'/pot_temp-monthly-1958_2018-'+key+'deg.nc')['pot_temp'] - 273.15
+        salt = xr.open_dataset(wdir+'/salt-monthly-1958_2018-'+key+'deg.nc')['salt']
+    yrmh = np.array([ts_hydro['year'].values, ts_hydro['month'].values])
+    unqe = np.unique(yrmh, axis = 1)
+    temp_times = temp.sel(time = str(unqe[0,0])+'-'+f'{unqe[1,0]:02}',
                           method = 'nearest')
-    salt_times = salt.sel(time = str(unqe[0,0])+'-'+f'{unqe[0,1]:02}',
+    salt_times = salt.sel(time = str(unqe[0,0])+'-'+f'{unqe[1,0]:02}',
                           method = 'nearest')
-    idx = np.where((yrmh == unqe[0, :]).all(axis = 1))[0]
+    idx = np.where((np.transpose(yrmh) == unqe[:,0]).all(axis = 1))[0]
     lat_model = xr.DataArray(ts_hydro['lat'][idx], dims = 'station')
     lon_model = xr.DataArray(ts_hydro['lon'][idx], dims = 'station')
     temp_model = temp_times.sel(xt_ocean = lon_model, yt_ocean = lat_model,
                                 method = 'nearest').squeeze()
     salt_model = salt_times.sel(xt_ocean = lon_model, yt_ocean = lat_model,
                                 method = 'nearest').squeeze()
-    for i in range(1, len(unqe[:, 0])):
-        temp_times = temp.sel(time = str(unqe[i,0])+'-'+f'{unqe[i,1]:02}',
+    for i in range(1, len(unqe[0,:])):
+        temp_times = temp.sel(time = str(unqe[0,i])+'-'+f'{unqe[1,i]:02}',
                               method = 'nearest')
-        salt_times = salt.sel(time = str(unqe[i,0])+'-'+f'{unqe[i,1]:02}',
+        salt_times = salt.sel(time = str(unqe[0,i])+'-'+f'{unqe[1,i]:02}',
                               method = 'nearest')
-        idx = np.where((rymh == unqe[i, :]).all(axis = 1))[0]
+        idx = np.where((np.transpose(yrmh) == unqe[:,i]).all(axis = 1))[0]
         lat_model = xr.DataArray(ts_hydro['lat'][idx], dims = 'station')
         lon_model = xr.DataArray(ts_hydro['lon'][idx], dims = 'station')
         temp_times = temp_times.sel(xt_ocean = lon_model, yt_ocean = lat_model,
@@ -321,15 +331,8 @@ def load_temp_salt_model(key, ts_hydro):
     salt_model = salt_model.rename({'st_ocean':'pressure'})
     salt_model = salt_model.interp(pressure = np.arange(0, 6000, 10))
     salt_model = salt_model.sortby('station')
-
-    salt_abs = gsw.SA_from_SP(salt_model, salt_model['pressure'],
-                              salt_model['xt_ocean'], salt_model['yt_ocean'])
-    pot_temp = gsw.pt0_from_t(salt_abs, temp_model, temp_model['pressure'])
-
-    ts_model = xr.merge([pot_temp, salt_model])
-    # SEGUIR ACA RENAME A POT TEMP ETC
-    ts_model['pot_temp'] = ts_model['pot_temp'].where(ts_hydro['pot_temp'] != np.nan)
-    ts_model['salt'] = ts_model['salt'].where(ts_hydro['salinity'] != np.nan)
+    salt_model = salt_model.where(ts_hydro['salt'] != np.nan)
+    ts_model = xr.merge([temp_model, salt_model])
 
     return ts_model
 

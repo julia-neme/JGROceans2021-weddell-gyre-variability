@@ -73,10 +73,11 @@ def map_weddell(size_x, size_y):
 
     return fig, axs
 
-def ts_diagram():
+def ts_diagram(dset):
 
     import gsw
     import matplotlib.pyplot as plt
+    import numpy as np
 
     fig, ax = plt.subplots(figsize = (95/25.4, 80/25.4))
     ax.plot([32.5, 35.25], [1.5, 1.5], color = 'k', linewidth = 1)
@@ -107,9 +108,9 @@ def ts_diagram():
                     interpolation = 'none', linewidths = .7, zorder = 0);
     ax.clabel(cc, inline = True, fontsize = 7)
 
-    depth = gsw.z_from_p(np.arange(0, 6000, 10), -65).values
-    depth = np.transpose(depth*np.ones([len(ts_hydro['station']),
-                                        len(ts_hydro['pressure'])]))
+    depth = gsw.z_from_p(dset['pressure'], -65).values
+    depth = np.transpose(depth*np.ones([len(dset['station']),
+                                        len(dset['pressure'])]))
     depth_tag  = np.empty(np.shape(depth))
     depth_tag[(depth > -200)] = 0
     depth_tag[(depth <= -200) & (depth > -5000)] = 1

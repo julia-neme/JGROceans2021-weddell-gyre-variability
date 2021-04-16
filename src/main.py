@@ -182,14 +182,10 @@ def plot_figure_4():
 
     #### TS diagrams
     ts_hydro = at.load_temp_salt_hydrography()
-    ts_model = {}
-    for k in keys:
-        ts_model[k] = at.load_temp_salt_model(k, ts_hydro)
+    hydr_cmap = pt.custom_colormaps('ts_diags')
 
-    hydr_cmap = plot_tools.custom_colormaps('ts_diags')
-
-    fig, ax, d_tag = plot_tools.ts_diagram()
-    sc = ax.scatter(ts_hydro['salinity'], ts_hydro['pot_temp'], c = d_tag,
+    fig, ax, d_tag = pt.ts_diagram(ts_hydro)
+    sc = ax.scatter(ts_hydro['salt'], ts_hydro['pot_temp'], c = d_tag,
                     s = 0.1, cmap = hydr_cmap);
     cbar = fig.colorbar(sc, ax = ax, orientation = 'vertical', shrink = .8,
                         format = mticker.ScalarFormatter());
@@ -202,11 +198,12 @@ def plot_figure_4():
             bbox = dict(boxstyle = 'round', facecolor = 'white'));
     ax.text(-0.15, 0.95, 'a)', horizontalalignment = 'left',
             transform = ax.transAxes);
-    plt.savefig(wdir+'/figure_4a_1.jpg')
+    plt.savefig(wdir+'/figure_4_a_ts.jpg')
 
-    for k, t in zip(keys, ['a', 'b', 'c']):
-        fig, ax, d_tag = plot_tools.ts_diagram()
-        sc = ax.scatter(ts_model[k]['salinity'], ts_model[k]['pot_temp'],
+    for k, t in zip(keys, ['b', 'c', 'd']):
+        ts_model = at.load_temp_salt_model(k, wdir, ts_hydro)
+        fig, ax, d_tag = pt.ts_diagram(ts_model)
+        sc = ax.scatter(ts_model['salt'], ts_model['pot_temp'],
                         c = d_tag, s = 0.1, cmap = hydr_cmap);
         cbar = fig.colorbar(sc, ax = ax, orientation = 'vertical', shrink = .8,
                             format = mticker.ScalarFormatter());
@@ -219,7 +216,7 @@ def plot_figure_4():
                 bbox = dict(boxstyle = 'round', facecolor = 'white'));
         ax.text(-0.15, 0.95, t+')', horizontalalignment = 'left',
                 transform = ax.transAxes);
-        plt.savefig(wdir+'/figure_4'+t+'_1.jpg')
+        plt.savefig(wdir+'/figure_4_'+t+'_ts.jpg')
 
     #### A12
     a12_hydro = analysis_tools.a12_hydrography()
@@ -235,6 +232,7 @@ def main():
     plot_figure_1()
     plot_figure_2()
     plot_figure_3()
+    plot_figure_4()
 
 if __name__ == "__main__":
     main()
