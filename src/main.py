@@ -180,7 +180,6 @@ def plot_figure_3():
 
 def plot_figure_4():
 
-    #### TS diagrams
     ts_hydro = at.load_temp_salt_hydrography()
     hydr_cmap = pt.custom_colormaps('ts_diags')
 
@@ -218,11 +217,9 @@ def plot_figure_4():
                 transform = ax.transAxes);
         plt.savefig(wdir+'/figure_4_'+t+'_ts.jpg')
 
-    #### A12
-    a12_hydro = analysis_tools.a12_hydrography()
-    a12_averg = a12_hydro.mean(dim = 'cruise')
-    a12_averg_pot_rho = analysis_tools.potential_density(a12_averg)
+def plot_figure_5():
 
+    a12_hydro = at.a12_hydrography()
 ###############################################################################
 
 def main():
