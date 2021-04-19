@@ -219,7 +219,53 @@ def plot_figure_4():
 
 def plot_figure_5():
 
-    a12_hydro = at.a12_hydrography()
+    ht = xr.open_dataset(wdir+'/ocean_grid-01deg.nc')['ht']
+    a12_hydro = at.a12_hydrography(wdir)
+    a12_pot_rho_obs = at.a12_mean_pot_rho(a12_hydro, 'hydrography')
+    a12_model = at.a12_model(keys[0:1], a12_hydro, wdir)
+    a12_pot_rho_mod = at.a12_mean_pot_rho(a12_model, 'model')
+    ht = ht.sel(xt_ocean = a12_hydro['lon'], yt_ocean = a12_hydro['lat'],
+                   method = 'nearest')
+
+    fig, axs = a12_section()
+    c = axs[0].contourf(a12_hydro['lat'],
+                       -a12_pot_rho_obs['pressure'][:251],
+                        a12_pot_rho_obs[:251, :],
+                        levels = np.arange(27.1, 27.92, .02), extend = 'both',
+                        cmap = 'Spectral')
+    axs[1].contourf(a12_hydro['lat'],
+                   -a12_pot_rho_obs['pressure'][250:],
+                    a12_pot_rho_obs[250:, :],
+                    levels = np.arange(27.1, 27.92, .02), extend = 'both',
+                    cmap = 'Spectral')
+    plt.fill_between(a12_hydro['lat'], -a12_pot_rho_obs['pressure'][-1], -ht,
+                    color = 'k')
+    cbar = plt.colorbar(c, ax = axs[:], orientation = 'vertical', shrink = 2)
+    cbar.set_label('$\theta$ [$^{\circ}$C]')
+    axs[0].text(-0.15, 0.95, 'a)', horizontalalignment = 'left',
+                transform = axs[0].transAxes);
+    plt.savefig(wdir+'/figure_4_a_rs.jpg')
+
+    for k, t in zip(keys[0:1], ['b', 'c', 'd']):
+        fig, axs = a12_section()
+        c = axs[0].contourf(a12_hydro['lat'],
+                            -a12_pot_rho_mod[k]['pressure'][:251],
+                            a12_pot_rho_mod[k][:251, :] - a12_pot_rho_obs[:251, :],
+                            levels = np.arange(27.1, 27.92, .02), extend = 'both',
+                            cmap = 'Spectral')
+        axs[1].contourf(a12_hydro['lat'],
+                       -a12_pot_rho_mod[k]['pressure'][250:],
+                        a12_pot_rho_mod[k][250:, :] - a12_pot_rho_obs[250:, :],
+                        levels = np.arange(27.1, 27.92, .02), extend = 'both',
+                        cmap = 'Spectral')
+        plt.fill_between(a12_hydro['lat'], -a12_pot_rho_obs['pressure'][-1], -ht,
+                        color = 'k')
+        cbar = plt.colorbar(c, ax = axs[:], orientation = 'vertical', shrink = 2)
+        cbar.set_label('$\theta$ [$^{\circ}$C]')
+        axs[0].text(-0.15, 0.95, t+')', horizontalalignment = 'left',
+                    transform = axs[0].transAxes);
+        plt.savefig(wdir+'/figure_4_'+t+'_rs.jpg')
+
 ###############################################################################
 
 def main():
@@ -230,6 +276,7 @@ def main():
     plot_figure_2()
     plot_figure_3()
     plot_figure_4()
+    plot_figure_5()
 
 if __name__ == "__main__":
     main()

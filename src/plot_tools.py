@@ -120,3 +120,22 @@ def ts_diagram(dset):
     depth_tag = depth_tag.astype('int')
 
     return fig, ax, depth_tag
+
+def a12_section():
+
+    import matplotlib.pyplot as plt
+    fig, axs = plt.subplots(2, 1, figsize = (95/25.4, 75/25.4),
+                           gridspec_kw = {'height_ratios':[0.5, 1],
+                                          'hspace':.03})
+    axs[0].set_ylim(-250, 0)
+    axs[0].set_xticks([-67, -62, -57])
+    axs[0].set_xticklabels([])
+    axs[0].set_yticks([-250, 0])
+    axs[0].set_yticklabels([250, 0])
+    axs[1].set_ylim(-6000, -250)
+    axs[1].set_xticks([-67, -62, -57])
+    axs[1].set_xticklabels(['67$^{\circ}$S', '62$^{\circ}$S', '57$^{\circ}$S'])
+    axs[1].set_yticks([-6000, -4000, -2000])
+    axs[1].set_yticklabels([6000, 4000, 2000])
+
+    return fig, axs

@@ -336,7 +336,7 @@ def load_temp_salt_model(key, wdir, ts_hydro):
 
     return ts_model
 
-def a12_hydrography():
+def a12_hydrography(wdir):
 
     import gsw
     import numpy as np
@@ -347,92 +347,141 @@ def a12_hydrography():
 
     def load_stations(directory):
         prof = {}; n = 0;
-        file_names = [y for x in os.walk(''+directory+'/')
+        file_names = [y for x in os.walk('/scratch/e14/jn8053/cchdo_hydrography/'+directory+'/')
                       for y in glob(os.path.join(x[0], '*.nc'))]
         file_names = np.sort(file_names)
         prof[n] = xr.open_dataset(file_names[0])
-        n += 1
-        if 'CTDTMP' in station[0].data_vars:
+        if 'CTDTMP' in prof[0].data_vars:
             temp_name = 'CTDTMP'
-            salt_name = 'CDTSAL'
-         else:
+            salt_name = 'CTDSAL'
+        else:
             temp_name = 'temperature'
             salt_name = 'salinity'
         prof[n] = prof[n].rename({temp_name:'temp', salt_name:'salt'})
+        n += 1
         for file in file_names[1:]:
             prof[n] = xr.open_dataset(file)
+            if 'CTDTMP' in prof[n].data_vars:
+                temp_name = 'CTDTMP'
+                salt_name = 'CTDSAL'
+            else:
+                temp_name = 'temperature'
+                salt_name = 'salinity'
             prof[n] = prof[n].rename({temp_name:'temp', salt_name:'salt'})
             n += 1
         return prof
 
-    def interp_to_pressure(station, p):
-        N = len(station)
-        rho = np.empty([len(p), N])*np.nan
+    def interpolate_to_pressure(profiles, var_name):
+
+        def get_shallow_stations(profiles, var, ht):
+            """
+            Drops stations shallower than 1000m from the array
+            """
+            N = len(profiles)
+            idx = []
+            for st in range(0, N, 1):
+                dpth = ht.sel(xt_ocean = profiles[st]['longitude'],
+                              yt_ocean = profiles[st]['latitude'],
+                              method = 'nearest')
+                nans = np.isnan(var[:, st]).sum()
+                # Depth of deepest station
+                z = gsw.z_from_p(profiles[st]['pressure'][-1],
+                                 profiles[st]['latitude'])
+                # Distance of deepest station from the bottom
+                dist = dpth - z.values
+                if nans > 0.8*dist:
+                    idx.append(st)
+            return idx
+
+        N = len(profiles)
+        prs = np.arange(0, 6001, 1)
+        var = np.empty([len(prs), N])*np.nan
         lon = np.empty(N)*np.nan
         lat = np.empty(N)*np.nan
-        tim = [station[0]['time'].values]
+        tim = [profiles[0]['time'].values]
         for st in range(0, N, 1):
-            lon[st] = station[st]['longitude']
-            lat[st] = station[st]['latitude']
-            temp = station[st]['temp'].dropna(dim = 'pressure')
-            temp = temp.interp(pressure = p, method = 'nearest')
-            salt = station[st]['salt'].dropna(dim = 'pressure')
-            salt = salt.interp(pressure = p, method = 'nearest')
-            salt_abs = gsw.SA_from_SP(salt, p, lon[st], lat[st])
-            temp_cst = gsw.CT_from_t(salt_abs, temp, p)
-            rho[:, st] = gsw.sigma0(salt_abs, temp_cst)
+            prf = profiles[st][var_name].dropna(dim = 'pressure')
+            var[:, st] = prf.interp(pressure = prs, method = 'nearest')
+            lon[st] = profiles[st]['longitude']
+            lat[st] = profiles[st]['latitude']
             if st != 0:
-                tim.append(station[st]['time'].values)
-        idx_shallow = []
-        for st in range(0, N, 1):
-            depth = ht.sel(xt_ocean = station[st]['longitude'],
-                           yt_ocean = station[st]['latitude'],
-                           method = 'nearest')
-            count_nans = np.isnan(rho[:, st]).sum()
-            # Depth of deepest station
-            z = gsw.z_from_p(station[st]['pressure'][-1],
-                             station[st]['latitude'])
-            # Distance of deepest station from the bottom
-            distance_to_bottom = depth - z.values
-            if count_nans > 0.8*distance_to_bottom:
-                idx_shallow.append(st)
-        rho = np.delete(rho, idx_shallow, axis = 1)
-        lon = np.delete(lon, idx_shallow)
-        lat = np.delete(lat, idx_shallow)
-        tim = np.delete(tim, idx_shallow)
+                tim.append(profiles[st]['time'].values)
 
-        rho_array = xr.DataArray(rho, name = 'pot_rho',
-                                 dims = ['pressure', 'station'],
-                                 coords = {'pressure':p,
-                                 'station':np.arange(0, len(lon), 1)})
-        rho_array.expand_dims({'lon':lon, 'lat':lat, 'time':tim})
-        lon_array = xr.DataArray(lon, name = 'lon', dims = ['station'],
-                                 coords = {'station':np.arange(0, len(lon), 1)})
-        lat_array = xr.DataArray(lat, name = 'lat', dims = ['station'],
-                                 coords = {'station':np.arange(0, len(lon), 1)})
-        t_array = xr.DataArray(tim, name = 'time', dims = ['station'],
-                               coords = {'station':np.arange(0, len(lon), 1)})
-        dset = xr.merge([rho_array, lon_array, lat_array, t_array])
-        dset = dset.sortby('lat')
+        idx = get_shallow_stations(profiles, var, ht)
+        var = np.delete(var, idx, axis = 1)
+        lon = np.delete(lon, idx)
+        lat = np.delete(lat, idx)
+        tim = np.delete(tim, idx)
+
+        var_xr = xr.DataArray(var, name = var_name, dims = ['pressure', 'station'],
+                              coords = {'pressure':prs,
+                                        'station':np.arange(0, len(lon), 1)})
+        var_xr.expand_dims({'lon':lon, 'lat':lat, 'time':tim})
+        lon_xr = xr.DataArray(lon, name = 'lon', dims = ['station'],
+                              coords = {'station':np.arange(0, len(lon), 1)})
+        lat_xr = xr.DataArray(lat, name = 'lat', dims = ['station'],
+                              coords = {'station':np.arange(0, len(lon), 1)})
+        tim_xr = xr.DataArray(tim, name = 'time', dims = ['station'],
+                              coords = {'station':np.arange(0, len(lon), 1)})
+        dset = xr.merge([var_xr, lon_xr, lat_xr, tim_xr])
+
         return dset
 
-    def project_to_a12(dset, idx_a12):
+    def a12_repeat_section(dset, var):
 
-        def projection_all_depths(dset, st, pr, x, y, xi, yi):
-            interp_to_a12 = interpolate_to_points((x, y),
-                                                  dset['pot_rho'][pr, st].values,
-                                                  (xi, yi),
-                                                  interp_type = 'nearest')
-            return interp_to_a12
+        def project_u_on_v(u, vi, vf):
 
-        xori = dset['lon'][idx_a12]
-        yori = dset['lat'][idx_a12]
-        v = np.array([0, -55+69])
-        u = np.transpose(np.array([xori, yori + 69]))
-        pr = [np.dot(u, v)/(np.sum(v**2))*v[0],
-              np.dot(u, v)/(np.sum(v**2))*v[1] - 69]
+            v = np.array([vf[0]-vi[0], vf[1]-vi[1]])
+            u = np.transpose(np.array([u[0]-vi[0], u[1]-vi[1]]))
+            u_proj = [np.dot(u, v)/(np.sum(v**2))*v[0]+vi[0], np.dot(u, v)/(np.sum(v**2))*v[1]+vi[1]]
+            return u_proj
+
+        def distance_from_start_A12(x, y):
+            dist = [0]
+            xini = -0
+            yini = -50
+            for i in range(1, len(x)):
+                dist.append(np.sqrt((x[i] - xini)**2 + (y[i] - yini)**2))
+            dist = np.squeeze(dist)
+
+            return dist
+
+        def projection_onto_A12(dset, var, st, p, x, y, xi, yi):
+
+            interpolated = interpolate_to_points((x, y), dset[var][p, st].values, (xi, yi), interp_type = 'nearest')
+
+            return interpolated
+
+        def interpolation_to_standard_A12(var_array, var_name, pressure, Xi, Xf):
+
+            dist_coords = distance_from_start_A12(Xi[0], Xi[1])
+            dist_interp = distance_from_start_A12(Xf[0], Xf[1])
+            # Drop duplicates
+            dist_unique, dist_unique_idx = np.unique(dist_coords, return_index = True)
+
+            # Create an xarray with distance from start as coordinate. We will interpolate in this dimension
+            var_xarray = xr.DataArray(var_array[:, dist_unique_idx], name = var_name, dims = ['pressure', 'distance'], coords = {'pressure':pressure, 'distance':dist_unique})
+            var_interp_xarray = var_xarray.interp(distance = dist_interp, method = 'nearest')
+            # Change dimension distance for a station number
+            var_interp_xarray['distance'] = np.arange(0, len(Xf[0]), 1)
+            var_interp_xarray = var_interp_xarray.rename({'distance':'station'})
+            xf_xarray = xr.DataArray(Xf[0], name = 'lon', dims = ['station'], coords = {'station':var_interp_xarray['station']})
+            yf_xarray = xr.DataArray(Xf[1], name = 'lat', dims = ['station'], coords = {'station':var_interp_xarray['station']})
+            dset_output = xr.merge([var_interp_xarray, xf_xarray, yf_xarray])
+
+            return dset_output
+
+        dset = dset.sortby('lat')
+        idx_A12 = np.where((dset['lon']<=2) & (dset['lon']>=-2) &
+                           (dset['lat']>-75) & (dset['lat']<=-55))[0]
+        # Projections onto SR04
+        pr = project_u_on_v((dset['lon'][idx_A12], dset['lat'][idx_A12]),
+                            ((0, -69)), (-0, -55))
         xi = pr[0]
         yi = pr[1]
+        # Original points
+        xori = dset['lon'][idx_A12]
+        yori = dset['lat'][idx_A12]
         # Remove points that are > 0.7 degrees away from the transect
         dist = np.sqrt((xori-xi)**2 + (yori-yi)**2)
         if np.shape(np.where(dist.values > 0.5)[0] != 0):
@@ -440,68 +489,113 @@ def a12_hydrography():
             yi = np.delete(yi, np.where(dist.values > 0.5)[0])
             xori = np.delete(xori, np.where(dist.values > 0.5)[0])
             yori = np.delete(yori, np.where(dist.values > 0.5)[0])
-            idx_a12 = np.delete(idx_a12, np.where(dist.values > 0.5)[0])
+            idx_A12 = np.delete(idx_A12, np.where(dist.values > 0.5)[0])
 
-        rho_a12 = Parallel(n_jobs = -1)(delayed(projection_all_depths)(dset,
-                        idx_a12, p, xori, yori, xi, yi)
-                        for pr in range(len(dset['pressure'])))
-        rho_a12 = np.squeeze(rho_a12)
+        # Project to A12 (Xori onto Xi)
+        dset_on_A12 = Parallel(n_jobs = -1)(delayed(projection_onto_A12)(dset, var, idx_A12, p, xori, yori, xi, yi) for p in range(len(dset['pressure'])))
+        dset_on_A12 = np.squeeze(dset_on_A12)
 
-        return rho_a12
-
-    def interp_to_standard_a12(dset):
-
-        def distance_coordinate_A12(x, y):
-            dist = [0]
-            xini = -0
-            yini = -50
-            for i in range(1, len(x)):
-                dist.append(np.sqrt((x[i] - xini)**2 + (y[i] - yini)**2))
-            dist = np.squeeze(dist)
-            return dist
-
+        # Define a standard A12
         xf = np.zeros(20)
         yf = np.linspace(-69, -55, 20)
-        dist_coords = distance_coordinate_A12(Xi[0], Xi[1])
-        dist_interp = distance_coordinate_A12(Xf[0], Xf[1])
-        dist_unique, dist_unique_idx = np.unique(dist_coords,
-                                                 return_index = True)
 
-        rho_xr = xr.DataArray(dset[:, dist_unique_idx], name = 'pot_rho',
-                              dims = ['pressure', 'distance'],
-                              coords = {'pressure':p, 'distance':dist_unique})
-        rho_xr = rho_xr.interp(distance = dist_interp, method = 'nearest')
-        # Change dimension distance for a station number
-        rho_xr['distance'] = np.arange(0, len(Xf[0]), 1)
-        rho_xr = rho_xr.rename({'distance':'station'})
-        x_xarray = xr.DataArray(Xf[0], name = 'lon', dims = ['station'],
-                                coords = {'station':s_xarray['station']})
-        y_xarray = xr.DataArray(Xf[1], name = 'lat', dims = ['station'],
-                                coords = {'station':s_xarray['station']})
-        rho_final = xr.merge([t_xarray, x_xarray, y_xarray])
-        return rho_final
+        var_interp_xarray = interpolation_to_standard_A12(dset_on_A12, var, dset['pressure'], (xi, yi), (xf, yf))
+        var_uninterp_xarray = xr.DataArray(dset[var][:, idx_A12], name = var, dims = dset.dims, coords = {'pressure':dset['pressure'], 'station':idx_A12})
+        var_uninterp_xarray = xr.merge([var_uninterp_xarray, dset['lon'][idx_A12], dset['lat'][idx_A12], dset['time'][idx_A12]])
 
-    dirs = ['a12_nc_ctd', 's04a_nc_ctd', 'sr04_e_nc_ctd', 'a12_1999a_nc_ctd',
-            '06AQ20050122_nc_ctd', '06AQ20071128_nc_ctd', '06AQ20080210_nc_ctd',
-            '06AQ20101128', '06AQ20141202_nc_ctd']
-    ht = xr.open_dataset(wdir+'/ocean_grid-01deg.nc')['ht']
+        return var_interp_xarray
+
+    direc = ['a12_nc_ctd', 's04a_nc_ctd', 'sr04_e_nc_ctd', 'a12_1999a_nc_ctd', '06AQ20050122_nc_ctd', '06AQ20071128_nc_ctd', '06AQ20080210_nc_ctd', '06AQ20101128', '06AQ20141202_nc_ctd']
+    ht = xr.open_dataset(wdir+'/raw_outputs/ht-01deg.nc')['ht']
     ht = ht.sel(xt_ocean = slice(-30, 30), yt_ocean = slice(-80, 50))
-    p = np.arange(0, 6000, 10)
-
-    temp_a12_st = {}; salt_a12_st = {}
-    for d in dirs:
-        station = load_stations(d)
-        station_interp = interpolate_to_pressure(station, p)
-        idx_A12 = np.where((station_interp['lon'] <= 2) &
-                           (station_interp['lon'] >= -2) &
-                           (station_interp['lat'] > -75) &
-                           (station_interp['lat'] <= -55))[0]
-        rho_a12 = project_to_a12(dset, idx_A12)
-        rho_a12_st[d] = interp_to_standard_a12(rho_a12)
-        if d == dirs[0]:
-            rho_a12_repeat = rho_a12_st[d]
+    for d in direc:
+        prof = load_stations(d)
+        temp = interpolate_to_pressure(prof, 'temp')
+        salt = interpolate_to_pressure(prof, 'salt')
+        temp_interp = a12_repeat_section(temp, 'temp')
+        salt_interp = a12_repeat_section(salt, 'salt')
+        if d == direc[0]:
+            temp_A12 = temp_interp
+            salt_A12 = salt_interp
         else:
-            rho_a12_repeat = xr.concat([rho_a12_repeat, rho_a12_st[d]],
-                                        dim = 'cruise')
+            temp_A12 = xr.concat([temp_A12, temp_interp], dim = 'cruise')
+            salt_A12 = xr.concat([salt_A12, salt_interp], dim = 'cruise')
 
-    return rho_a12_repeat
+    hydro = xr.merge([temp_A12.mean(dim = 'cruise'),
+                      salt_A12.mean(dim = 'cruise')])
+    return hydro
+
+def a12_mean_pot_rho(dset, hydro_or_model):
+
+    import gsw
+    import xarray as xr
+
+    salt = dset['salt']
+    pres = dset['pressure']
+    lon = dset['lon']
+    lat = dset['lat']
+    salt_abs = gsw.SA_from_SP(salt, pres, lon, lat)
+    if hydro_or_model == 'hydrography':
+        temp_csv = gsw.CT_from_t(salt_abs, dset['temp'], pres)
+    elif hydro_or_model == 'model':
+        temp_csv = gsw.CT_from_pt(salt_abs, dset['pot_temp'])
+    pot_rho = gsw.sigma0(salt_abs, temp_csv)
+    pot_rho = xr.DataArray(pot_rho, name = 'pot_rho')
+    return pot_rho
+
+def a12_model(keys, hydro, wdir):
+
+    import gsw
+    import numpy as np
+    import xarray as xr
+
+    time_select = ['1992-06-15T00:00:00.000000000',
+                   '1992-07-15T00:00:00.000000000',
+                   '1996-03-15T00:00:00.000000000',
+                   '1996-04-15T00:00:00.000000000',
+                   '1996-05-15T00:00:00.000000000',
+                   '1998-05-15T00:00:00.000000000',
+                   '1999-01-15T00:00:00.000000000',
+                   '1999-02-15T00:00:00.000000000',
+                   '1999-03-15T00:00:00.000000000',
+                   '2005-02-15T00:00:00.000000000',
+                   '2005-03-15T00:00:00.000000000',
+                   '2007-12-15T00:00:00.000000000',
+                   '2008-01-15T00:00:00.000000000',
+                   '2008-02-15T00:00:00.000000000',
+                   '2008-03-15T00:00:00.000000000',
+                   '2010-12-15T00:00:00.000000000',
+                   '2011-01-15T00:00:00.000000000',
+                   '2014-12-15T00:00:00.000000000',
+                   '2015-01-15T00:00:00.000000000']
+    model = {};
+    for k in keys[0:1]:
+
+        temp_access = xr.open_dataset(wdir+'/raw_outputs/pot_temp-monthly-A12-'+k+'deg.nc')['pot_temp'] - 273.15
+        temp_t = temp_access.sel(time = time_select[0], method = 'nearest')
+        for t in time_select[1:]:
+            T = temp_access.sel(time = t, method = 'nearest')
+            temp_t = xr.concat([temp_t, T], dim = 'time')
+        temp_t = temp_t.mean(dim = 'time')
+        temp = temp_t.interp(xt_ocean = hydro['lon'], yt_ocean = hydro['lat'])
+        p = gsw.p_from_z(-temp['st_ocean'], -65)
+        temp['st_ocean'] = p.values
+        temp = temp.rename({'st_ocean':'pressure'})
+        temp = temp.interp(pressure = np.arange(0, 6001, 1))
+
+        salt_access = xr.open_dataset(wdir+'/raw_outputs/salt-monthly-A12-'+k+'deg.nc')['salt']
+        salt_t = salt_access.sel(time = time_select[0],  method = 'nearest')
+        for t in time_select[1:]:
+            S = salt_access.sel(time = t, method = 'nearest')
+            salt_t = xr.concat([salt_t, S], dim = 'time')
+        salt_t = salt_t.mean(dim = 'time')
+        salt = salt_t.interp(xt_ocean = hydro['lon'],
+                                yt_ocean = hydro['lat'])
+        p = gsw.p_from_z(-salt['st_ocean'], -65)
+        salt['st_ocean'] = p.values
+        salt = salt.rename({'st_ocean':'pressure'})
+        salt = salt.interp(pressure = np.arange(0, 6001, 1))
+
+        model[k] = xr.merge([temp, salt])
+
+    return model
