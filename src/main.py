@@ -266,6 +266,74 @@ def plot_figure_5():
                     transform = axs[0].transAxes);
         plt.savefig(wdir+'/figure_4_'+t+'_rs.jpg')
 
+def plot_figure_6():
+
+    psi_mean = {}
+    psi_sdev = {}
+    pvor = {}
+    for k in keys:
+        psi = xr.open_dataset(wdir+'/psi_b-monthly-1958_2018-'+k+'deg.nc')['psi_b']
+        psi_mean[k] = psi.mean(dim = 'time')
+        psi_sdev[k] = psi.std(dim = 'time')
+        pvor[k] = at.potential_vorticity(keys, wdir)
+
+    bndy = at.gyre_boundary(keys, wdir, 'mean')
+    iso1 = xr.open_dataset(wdir+'/isobath_1000m.nc')
+    pv_lvls = -np.flip(np.logspace(np.log10(0.0001), np.log10(0.04), num = 50))
+    psi_cmap = shiftedColorMap(cmocean.cm.curl, -40, 100.25, 'psi_cmap')
+
+    for k, t in zip(keys, ['a)', 'c)', 'e)']):
+        fig, axs = pt.map_weddell(190, 95)
+        cf = axs.contourf(psi_mean[k]['xu_ocean'], psi_mean[k]['yt_ocean'], psi_mean[k], levels = np.arange(-40, 100.25, 2.5), cmap = psi_cmap, extend = 'both', transform = ccrs.PlateCarree())
+        ct = axs.contour(pvor[k]['xt_ocean'], pvor[k]['yt_ocean'], pvor[k]*1e6, levels = pv_lvls, colors = ['k'], linestyles = 'solid', linewidths = 0.6, transform = ccrs.PlateCarree())
+        axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1.5, transform = ccrs.PlateCarree())
+        axs.text(0.98, 0.08, k+'$^{/circ}$', horizontalalignment = 'right', transform = axs.transAxes, bbox = dict(boxstyle = 'round', facecolor = 'white'));
+        axs.text(-0.08, 0.93, t, horizontalalignment = 'right', transform = axs.transAxes);
+        cbar = fig.colorbar(cf, ax = axs, orientation = 'horizontal', shrink = .6)
+        cbar.set_label('$\\psi$ [Sv]')
+        plt.savefig(wdir+'psi_b-mean-'+k+'deg.jpg')
+
+    for k, t in zip(keys, ['a)', 'c)', 'e)']):
+        fig, axs = pt.map_weddell(190, 95)
+        cf = axs.contourf(psi_sdev[k]['xu_ocean'], psi_sdev[k]['yt_ocean'], psi_sdev[k], levels = np.arange(0, 32, 2), cmap = cmocean.cm.amp, extend = 'both', transform = ccrs.PlateCarree())
+        ct = axs.contour(pvor[k]['xt_ocean'], pvor[k]['yt_ocean'], pvor[k]*1e6, levels = pv_lvls, colors = ['k'], linestyles = 'solid', linewidths = 0.6, transform = ccrs.PlateCarree())
+        axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1.5, transform = ccrs.PlateCarree())
+        axs.text(0.98, 0.08, k+'$^{/circ}$', horizontalalignment = 'right', transform = axs.transAxes, bbox = dict(boxstyle = 'round', facecolor = 'white'));
+        axs.text(-0.08, 0.93, t, horizontalalignment = 'right', transform = axs.transAxes);
+        cbar = fig.colorbar(cf, ax = axs, orientation = 'horizontal', shrink = .6)
+        cbar.set_label('$\\psi$ [Sv]')
+        plt.savefig(wdir+'psi_b-sdev-'+k+'deg.jpg')
+
+def plot_figure_7():
+
+    subsfc_tmax = {}
+    for k in keys:
+        subsfc_tmax[k] = xr.open_dataset(wdir+'sub_sfc_tmax-monthly-1958_2018-'+k+'deg.nc')['sub_sfc_tmax'].mean(dim = 'time')
+    iso1 = xr.open_dataset(wdir+'/isobath_1000m.nc')
+    bndy = at.gyre_boundary(keys, wdir, 'mean')
+    temp_cmap = pt.custom_colormaps('subsfc_tmax')
+
+    for k, t in zip(keys, ['b', 'c', 'd']):
+        fig, axs = pt.map_weddell(190, 95)
+        cf = axs.contourf(subsfc_tmax[k]['xt_ocean'],
+                          subsfc_tmax[k]['yt_ocean'],
+                          subsfc_tmax[k]-273.15,
+                          levels = np.arange(-2, 4.25, .25), cmap = temp_cmap, extend = 'both', transform = ccrs.PlateCarree())
+        axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1,
+                 transform = ccrs.PlateCarree())
+        axs.plot(bndy[k][:,0], bndy[k][:,1], color = 'k', linestyle = 'solid',
+                 linewidth = 1.5, transform = ccrs.PlateCarree())
+        axs.text(0.98, 0.08, k+'${\circ}$', horizontalalignment = 'right',
+                 transform = axs.transAxes, bbox = dict(boxstyle = 'round', facecolor = 'white'));
+        axs.text(-0.08, 0.93, t+')', horizontalalignment = 'right',
+                 transform = axs.transAxes);
+        cbar = fig.colorbar(cf, ax = axs, orientation = 'horizontal',
+                           shrink = .6)
+        cbar.set_ticks(np.arange(-2, 5, 1))
+        cbar.set_label('$\\theta$ [$^{\circ}$C]')
+        plt.savefig(wdir+'results/theta_subsfctmax-mean-'+t+'.jpg')
+
+
 ###############################################################################
 
 def main():
@@ -277,6 +345,8 @@ def main():
     plot_figure_3()
     plot_figure_4()
     plot_figure_5()
+    plot_figure_6()
+    plot_figure_7()
 
 if __name__ == "__main__":
     main()

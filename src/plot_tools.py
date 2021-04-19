@@ -48,6 +48,11 @@ def custom_colormaps(name):
     elif name == 'ts_diags':
         cmap = mcolors.LinearSegmentedColormap.from_list(name = None,
                colors = plt.get_cmap('Blues')(np.linspace(.4, 1, 5)), N = 5)
+    elif name == 'subsfc_tmax':
+        cmap_colors =  ['#353992', '#7294C2', '#A5C4DD', '#F9FCCF', '#F2CF85',
+                        '#CB533B']
+        cmap = mcolors.LinearSegmentedColormap.from_list(name = None,
+               colors = cmap_colors, N = 250, gamma = .8)
 
     return cmap
 
@@ -124,7 +129,9 @@ def ts_diagram(dset):
 def a12_section():
 
     import matplotlib.pyplot as plt
-    fig, axs = plt.subplots(2, 1, figsize = (95/25.4, 75/25.4),
+    fig, axs = plt.subplots(2, 1, figsize = (95/25.4, 75
+
+    /25.4),
                            gridspec_kw = {'height_ratios':[0.5, 1],
                                           'hspace':.03})
     axs[0].set_ylim(-250, 0)
@@ -139,3 +146,31 @@ def a12_section():
     axs[1].set_yticklabels([6000, 4000, 2000])
 
     return fig, axs
+
+def shiftedColorMap(cmap, min_val, max_val, name):
+
+    import matplotlib.colors as mcolors
+    import matplotlib.pyplot as plt
+    import numpy as np
+    epsilon = 0.001
+    start, stop = 0.0, 1.0
+    min_val, max_val = min(0.0, min_val), max(0.0, max_val)
+    midpoint = 1.0 - max_val/(max_val + abs(min_val))
+    cdict = {'red': [], 'green': [], 'blue': [], 'alpha': []}
+    # regular index to compute the colors
+    reg_index = np.linspace(start, stop, 257)
+    # shifted index to match the data
+    shift_index = np.hstack([np.linspace(0.0, midpoint, 128, endpoint=False), np.linspace(midpoint, 1.0, 129, endpoint=True)])
+    for ri, si in zip(reg_index, shift_index):
+        if abs(si - midpoint) < epsilon:
+            r, g, b, a = cmap(0.5) # 0.5 = original midpoint.
+        else:
+            r, g, b, a = cmap(ri)
+        cdict['red'].append((si, r, r))
+        cdict['green'].append((si, g, g))
+        cdict['blue'].append((si, b, b))
+        cdict['alpha'].append((si, a, a))
+    newcmap = mcolors.LinearSegmentedColormap(name, cdict)
+    plt.register_cmap(cmap = newcmap)
+
+    return newcmap
