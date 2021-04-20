@@ -322,7 +322,9 @@ def plot_figure_7():
                  transform = ccrs.PlateCarree())
         axs.plot(bndy[k][:,0], bndy[k][:,1], color = 'k', linestyle = 'solid',
                  linewidth = 1.5, transform = ccrs.PlateCarree())
-        axs.text(0.98, 0.08, k+'$^{\circ}$', horizontalalignment = 'right',
+        axs.text(0.98, 0.08, k+'$^
+
+        {\circ}$', horizontalalignment = 'right',
                  transform = axs.transAxes, bbox = dict(boxstyle = 'round', facecolor = 'white'));
         axs.text(-0.08, 0.93, t+')', horizontalalignment = 'right',
                  transform = axs.transAxes);
@@ -332,7 +334,217 @@ def plot_figure_7():
         cbar.set_label('$\\theta$ [$^{\circ}$C]')
         plt.savefig(wdir+'results/theta_subsfctmax-mean-'+t+'.jpg')
 
+def plot_figure_8():
 
+    gstr = at.gyre_strength(keys, wdir, 'seasonal')
+    scrl = at.wind_stress_curl(keys, wdir, 'seasonal')
+    bflu = at.buoyancy_flux(keys, wdir, 'seasonal')
+
+    fig, axs = pt.annual_cycles():
+    for k in keys:
+        axs[0].plot(np.arange(0, 12, 1), gst[k], color = clrs[k], alpha = alph[k], linewidth = 1)
+        axs[1].plot(np.arange(0, 12, 1), -1e7*ssc[k], color = clrs[k], linewidth = 1)
+        axs[2].plot(np.arange(0, 12, 1), 1e8*bflu[k], color = clrs[k], linewidth = 1)
+    plt.savefig(path+'figure_8.jpg')
+
+def plot_figure_9():
+
+    psib = at.psi_b_seasonal('01', wdir)
+    psib_djf = psib['01'].isel(month = [11, 0, 1]).mean(dim = 'month')
+    psib_jja = psib['01'].isel(month = [5, 6, 7]).mean(dim = 'month')
+    bflu = at.buoyancy_flux_seasonal('01', wdir)
+    bflu_djf = bflu['01'].isel(month = [11, 0, 1]).mean(dim = 'month')
+    bflu_jja = bflu['01'].isel(month = [5, 6, 7]).mean(dim = 'month')
+    slp = at.slp_seasonal(wdir)
+    slp_djf = slp['01'].isel(month = [11, 0, 1]).mean(dim = 'month')
+    slp_jja = slp['01'].isel(month = [5, 6, 7]).mean(dim = 'month')
+    iso1 = xr.open_dataset(path+'isobath_1000m.nc')
+    bndy = at.gyre_boundary('01', wdir, 'seasonal')
+
+    fig, axs = pt.map_weddell()
+    c = axs.contourf(psib_djf['xu_ocean'], psib_djf['yt_ocean'], psib_djf,
+                     levels = np.arange(-10, 11, 1), cmap = 'RdBu_r',
+                     extend = 'both', transform = ccrs.PlateCarree())
+    axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1,
+             transform = ccrs.PlateCarree())
+    axs.plot(bndy[0][:, 0], bndy[0][:, 1], color = 'k', linewidth =1.5,
+             transform = ccrs.PlateCarree())
+    axs.text(0.98, 0.08, 'DJF', horizontalalignment = 'right',
+             transform = axs.transAxes,
+             bbox = dict(boxstyle = 'round', facecolor = 'white'));
+    axs.text(-0.08, 0.93, 'a)', horizontalalignment = 'right',
+             transform = axs.transAxes);
+    cbar = fig.colorbar(c, ax = axs, orientation = 'horizontal', shrink = .6)
+    cbar.set_label('Transport [Sv]')
+    plt.savefig(path+'figure_9_a.jpg')
+
+    fig, axs = pt.map_weddell()
+    c = axs.contourf(psib_jja['xu_ocean'], psib_jja['yt_ocean'], psib_jja,
+                     levels = np.arange(-10, 11, 1), cmap = 'RdBu_r',
+                     extend = 'both', transform = ccrs.PlateCarree())
+    axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1,
+             transform = ccrs.PlateCarree())
+    axs.plot(bndy[1][:, 0], bndy[1][:, 1], color = 'k', linewidth =1.5,
+             transform = ccrs.PlateCarree())
+    axs.text(0.98, 0.08, 'JJA', horizontalalignment = 'right',
+             transform = axs.transAxes,
+             bbox = dict(boxstyle = 'round', facecolor = 'white'));
+    axs.text(-0.08, 0.93, 'c)', horizontalalignment = 'right',
+             transform = axs.transAxes);
+    cbar = fig.colorbar(c, ax = axs, orientation = 'horizontal', shrink = .6)
+    cbar.set_label('Transport [Sv]')
+    plt.savefig(path+'figure_9_c.jpg')
+
+    fig, axs = pt.map_weddell()
+    c = axs.contourf(bflu_djf['xt_ocean'], bflu_djf['yt_ocean'], 1e8*bflu_djf,
+                     levels = np.arange(-5, 5.5, .5), cmap = 'RdBu_r',
+                     extend = 'both', transform = ccrs.PlateCarree(),
+                     zorder = -2)
+    axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1,
+             transform = ccrs.PlateCarree(), zorder = -1)
+    axs.plot(bndy[0][:,0], bndy[0][:,1], color = 'k', linewidth = 1.5,
+             transform = ccrs.PlateCarree(), zorder = -1)
+    cc = axs.contour(slp_djf['lon'], slp_djf['lat'], slp_djf/100,
+                     colors = ['white'], levels = np.arange(984, 1002, 2),
+                     linewidths = [1.5], transform = ccrs.PlateCarree(),
+                     zorder = 0)
+    axs.clabel(cc, inline = True, fmt = '%1.0f')
+    axs.text(0.98, 0.08, 'DJF', horizontalalignment = 'right',
+             transform = axs.transAxes,
+             bbox = dict(boxstyle = 'round', facecolor = 'white'));
+    axs.text(-0.08, 0.93, 'b)', horizontalalignment = 'right',
+             transform = axs.transAxes);
+    cbar = fig.colorbar(c, ax = axs, orientation = 'horizontal', shrink = .6)
+    cbar.set_label('$\\mathcal{B}$ [10$^{-8}$ m$^{2}$  s$^{-3}$]')
+    plt.savefig(path+'figure_9_b.jpg')
+
+    fig, axs = pt.map_weddell()
+    c = axs.contourf(bflu_jja['xt_ocean'], bflu_jja['yt_ocean'], 1e8*bflu_jja,
+                     levels = np.arange(-5, 5.5, .5), cmap = 'RdBu_r',
+                     extend = 'both', transform = ccrs.PlateCarree(),
+                     zorder = -2)
+    axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1,
+             transform = ccrs.PlateCarree(), zorder = -1)
+    axs.plot(bndy[1][:,0], bndy[1][:,1], color = 'k', linewidth = 1.5,
+             transform = ccrs.PlateCarree(), zorder = -1)
+    cc = axs.contour(slp_jja['lon'], slp_jja['lat'], slp_jja/100,
+                     colors = ['white'], levels = np.arange(984, 1002, 2),
+                     linewidths = [1.5], transform = ccrs.PlateCarree(),
+                     zorder = 0)
+    axs.clabel(cc, inline = True, fmt = '%1.0f')
+    axs.text(0.98, 0.08, 'JJA', horizontalalignment = 'right',
+             transform = axs.transAxes,
+             bbox = dict(boxstyle = 'round', facecolor = 'white'));
+    axs.text(-0.08, 0.93, 'd)', horizontalalignment = 'right',
+             transform = axs.transAxes);
+    cbar = fig.colorbar(c, ax = axs, orientation = 'horizontal', shrink = .6)
+    cbar.set_label('$\\mathcal{B}$ [10$^{-8}$ m$^{2}$  s$^{-3}$]')
+    plt.savefig(path+'figure_9_d.jpg')
+
+def plot_figure_10():
+
+    gstr = at.gyre_strength(keys, wdir, 'interannual')
+    scrl = at.sfc_stress_curl(keys, wdir, 'interannual')
+    bflu = at.buoyancy_flux(keys, wdir, 'interannual')
+    sam = at.sam_index(wdir)
+    eas = at.easterlies_index(wdir)
+
+    for k in keys:
+        gstr[k] = gstr[k].rolling(time = 12, center = True).mean()
+        scrl[k] = scrl[k].rolling(time = 12, center = True).mean()
+        bflu[k] = bflu[k].rolling(time = 12, center = True).mean()
+    sam = sam.rolling(time = 12, center = True).mean()
+    eas = eas.rolling(time = 12, center = True).mean()
+
+    evnt = at.get_events(gstr['01'], wdir)
+
+    fig, axs = interannual_time_series()
+    for k in keys:
+        axs[0].plot(gstr[k]['time'], gstr[k], color = clrs[k],
+                    alpha = alph[k], linewidth = .8)
+        axs[1].plot(scrl[k]['time'], -1e7*scrl[k], color = clrs[k],
+                    alpha = alph[k], linewidth = .8)
+        axs[2].plot(bflu[k]['time'], 1e8*bflu[k], color = clrs[k],
+                    alpha = alph[k], linewidth = .8)
+    axs[3].plot(sam['time'], sam, color = 'k', linewidth = .8)
+    axs[4].plot(sam['time'], sam, color = 'k', linewidth = .8)
+    for ax in axs:
+        ax.axhline(y = 0, color = 'k', linewidth = 0.5, linestyle = '--', zorder = 0)
+        ax.axhline(y = 0, color = 'k', linewidth = 0.5, linestyle = '--', zorder = 0)
+        for i in range(0, len(evnt[0][0])):
+            ax.axvspan(time[evnt[0][0][i]], time[evnt[0][1][i]], alpha = 0.1,
+                       color = 'red')
+        for i in range(0, len(evnt[1][0])):
+            ax.axvspan(time[evnt[1][0][i]], time[evnt[1][1][i]], alpha = 0.1,
+                       color = 'blue')
+    plt.savefig(path+'figure_10.jpg')
+
+def plot_figure_11():
+
+    gstr = at.gyre_strength('01', wdir, 'interannual')
+    gstr = gstr['01'].rolling(time = 12, center = True).mean()
+    evnt = get_events(gstr, wdir)
+
+    psib_cmp = at.composites(evnt, 'psi_b', wdir)
+    bflu_cmp = at.composites(evnt, 'bflux', wdir)
+    slp_cmp = at.composites(evnt, 'slp', wdir)
+    slp_cmp = slp_cmp.sel(lon = slice(-70, 80), lat = slice(None, -50))
+    aice_cmp = at.composites(evnt, 'aice', wdir)
+    tmax_cmp = at.composites(evnt, 'tmax', wdir)
+
+    lr_bflu = at.composites_correlations(gstr, wdir, 'bflux')
+    lr_aice = at.composites_correlations(gstr, wdir, 'aice')
+    lr_tmax = at.composites_correlations(gstr, wdir, 'tmax')
+
+    fig, ax = pt.map_weddell()
+    cf = ax.contourf(psib_cmp['xu_ocean'], psib_cmp['yt_ocean'], psib_cmp,
+                     levels = np.arange(-10, 11, 1), cmap = 'RdBu_r',
+                     extend = 'both', transform = ccrs.PlateCarree(),
+                     zorder = 0)
+    cc = ax.contour(slp_cmp['lon'], slp_cmp['lat'], slp_cmp/100,
+                    colors = ['white'], transform = ccrs.PlateCarree(),
+                    zorder = 1)
+    ax.clabel(cc, inline = True, fmt = '%1.1f', fontsize = 8)
+    cbar = fig.colorbar(cf, ax = ax, orientation = 'vertical', shrink = .6)
+    cbar.set_label('Transport [Sv]', fontsize = 8)
+    ax.text(-0.08, 0.93, 'a)', horizontalalignment = 'right', transform = ax.transAxes);
+    plt.savefig(path+'figure_11_a.jpg')
+
+    fig, ax = pt.map_weddell()
+    cf = ax.contourf(bflu_cmp['xt_ocean'], bflu_cmp['yt_ocean'], bflu_cmp*1e8,
+                    levels = np.arange(-1, 1.1, .1), cmap = 'RdBu_r',
+                    extend = 'both', transform = ccrs.PlateCarree())
+    ax.contourf(lr_bflu['xt_ocean'], lr_bflu['yt_ocean'],
+                lr_bflu.where(lr_bflu < 0.1), colors = ['none'],
+                hatches = ['xxx'], transform = ccrs.PlateCarree())
+    cbar = fig.colorbar(cf, ax = ax, orientation = 'vertical', shrink = .6)
+    cbar.set_label('$\\mathcal{B}$ [10$^{-8}$ m$^{2}$  s$^{-3}$]')
+    ax.text(-0.08, 0.93, 'b)', horizontalalignment = 'right', transform = ax.transAxes);
+    plt.savefig(path+'figure_11_b.jpg')
+
+    fig, ax = pt.map_weddell()
+    cf = ax.contourf(tmax_cmp['xt_ocean'], tmax_cmp['yt_ocean'], tmax_cmp,
+                     levels = np.arange(-.5, .55, .05), cmap = 'RdBu_r',
+                     extend = 'both', transform = ccrs.PlateCarree())
+    ax.contourf(lr_tmax['xt_ocean'], lr_tmax['yt_ocean'],
+                lr_tmax.where(lr_tmax<0.1), colors = ['none'],
+                hatches = ['xxx'], transform = ccrs.PlateCarree())
+    cbar = fig.colorbar(cf, ax = ax, orientation = 'vertical', shrink = .6)
+    cbar.set_label('$\\theta$ [$^{\circ}$C]')
+    ax.text(-0.08, 0.93, 'c)', horizontalalignment = 'right', transform = ax.transAxes);
+    plt.savefig(path+'figure_11_c.jpg')
+
+    fig, ax = pt.map_weddell()
+    cf = ax.contourf(aice_cmp['xt_ocean'], aice_cmp['yt_ocean'], aice_cmp*100,
+                     levels = np.arange(-.1, .11, .01)*100, cmap = 'RdBu_r',
+                     extend = 'both', transform = ccrs.PlateCarree())
+    ax.contourf(lr_aice['xt_ocean'], lr_aice['yt_ocean'],
+                lr_aice.where(lr_aice < 0.1), colors = ['none'],
+                hatches = ['xxx'], transform = ccrs.PlateCarree())
+    cbar = fig.colorbar(cf, ax = ax, orientation = 'vertical', shrink = .6)
+    cbar.set_label('Sea ice concentration [$\\%$]')
+    ax.text(-0.08, 0.93, 'd)', horizontalalignment = 'right', transform = ax.transAxes);
+    plt.savefig(path+'figure_11_d.jpg')
 ###############################################################################
 
 def main():
@@ -346,6 +558,10 @@ def main():
     plot_figure_5()
     plot_figure_6()
     plot_figure_7()
+    plot_figure_8()
+    plot_figure_9()
+    plot_figure_10()
+    plot_figure_11()
 
 if __name__ == "__main__":
     main()

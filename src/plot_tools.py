@@ -174,3 +174,67 @@ def shiftedColorMap(cmap, min_val, max_val, name):
     plt.register_cmap(cmap = newcmap)
 
     return newcmap
+
+def annual_cycles():
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from matplotlib.lines import Line2D
+
+    lgnd = [Line2D([0], [0], color = 'brown', lw = 1, label = '1$^{\circ}$'),
+            Line2D([0], [0], color = 'darkgoldenrod', lw = 1, label = '0.25$^{\circ}$'),
+            Line2D([0], [0], color = 'navy', lw = 1, alpha = 0.7, label = '0.1$^{\circ}$'')]
+
+    fig = plt.figure(figsize = (100/25.4, 100/25.4))
+    axs = [fig.add_subplot(311), fig.add_subplot(312), fig.add_subplot(313)]
+    for ax, t in zip(axs, ['a)', 'b)', 'c)']):
+        ax.set_xlim(0, 11)
+        ax.set_xticks(np.arange(0, 12, 1))
+        if ax == axs[-1]:
+            ax.set_xticklabels(['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'])
+        else:
+            ax.set_xticklabels([])
+        ax.text(-0.15, 0.95, t, horizontalalignment = 'left', transform = ax.transAxes);
+    axs[1].legend(handles = lgnd, ncol = 3, bbox_to_anchor = (0.5, 2.2),
+                  loc = 'lower center', frameon = False)
+    axs[0].set_ylabel('Strength [Sv]', fontsize = 6)
+    axs[1].set_ylabel('$| \\nabla \\times \\tau |$ \n [10$^{-7}$ N m$^{-3}$]',
+                      fontsize = 6)
+    axs[2].set_ylabel('$\\mathcal{B}$ \n [10$^{-8}$ m$^{2}$  s$^{-3}$]',
+                      fontsize = 6)
+    return fig, axs
+
+def interannual_time_series():
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from matplotlib.lines import Line2D
+
+    lgnd = [Line2D([0], [0], color = 'brown', lw = 1, label = '1$^{\circ}$'),
+            Line2D([0], [0], color = 'darkgoldenrod', lw = 1,
+            label = '0.25$^{\circ}$'),
+            Line2D([0], [0], color = 'navy', lw = 1, alpha = 0.7,
+            label = '0.1$^{\circ}$')]
+
+    fig = plt.figure(figsize = (190/25.4, 150/25.4))
+    axs = [fig.add_subplot(511), fig.add_subplot(512), fig.add_subplot(513), fig.add_subplot(514), fig.add_subplot(515)]
+    plt.subplots_adjust(wspace = 0, hspace = 0)
+    for i in range(0, 4):
+        axs[i].spines['bottom'].set_visible(False)
+        axs[i+1].spines['top'].set_visible(False)
+        axs[i].set_xticklabels([])
+        axs[i].tick_params(bottom = False)
+    axs[-1].xaxis.set_minor_locator(mdates.YearLocator())
+    for ax, t in zip(axs, ['a)', 'b)', 'c)', 'd)', 'e)']):
+        ax.text(0.01, 0.8, t, horizontalalignment = 'left', transform = ax.transAxes, fontsize = 8)
+    axs[0].legend(handles = lgnd, ncol = 3, bbox_to_anchor = (0.5, 1.02),
+                  loc = 'lower center', frameon = False, fontsize = 8)
+    axs[0].set_ylabel('Strength \n [Sv]', fontsize = 8)
+    axs[1].set_ylabel('$| \\nabla \\times \\tau |$ \n [10$^{-7}$ N m$^{-3}$]',
+                      fontsize = 8)
+    axs[2].set_ylabel('$\\mathcal{B}$ \n [10$^{-8}$ m$^{2}$  s$^{-3}$]',
+                      fontsize = 8)
+    axs[3].set_ylabel('SAM \n index', fontsize = 8)
+    axs[4].set_ylabel('EAS \n index', fontsize = 8)
+
+    return fig, axs
