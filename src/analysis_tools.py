@@ -606,7 +606,7 @@ def potential_vorticity(keys, wdir):
     pvor = {}
     for k in keys:
         ht = xr.open_dataset(wdir+'ocean_grid-'+k+'deg.nc')['ht'].sel(xt_ocean = slice(-70, 80), yt_ocean = slice(-80, -50))
-        pvor[k] = 2*7.292e-5*np.sin(ht[k]['yt_ocean']*np.pi/180)/ht[k]
+        pvor[k] = 2*7.292e-5*np.sin(ht['yt_ocean']*np.pi/180)/ht
 
     pvor['1'] = pvor['1'].rolling(xt_ocean = 2).mean().rolling(yt_ocean = 2).mean()
     pvor['025'] = pvor['025'].rolling(xt_ocean = 8).mean().rolling(yt_ocean = 8).mean()

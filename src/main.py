@@ -275,30 +275,29 @@ def plot_figure_6():
         psi = xr.open_dataset(wdir+'/psi_b-monthly-1958_2018-'+k+'deg.nc')['psi_b']
         psi_mean[k] = psi.mean(dim = 'time')
         psi_sdev[k] = psi.std(dim = 'time')
-        pvor[k] = at.potential_vorticity(keys, wdir)
-
+    pvor = at.potential_vorticity(keys, wdir)
     bndy = at.gyre_boundary(keys, wdir, 'mean')
     iso1 = xr.open_dataset(wdir+'/isobath_1000m.nc')
     pv_lvls = -np.flip(np.logspace(np.log10(0.0001), np.log10(0.04), num = 50))
-    psi_cmap = shiftedColorMap(cmocean.cm.curl, -40, 100.25, 'psi_cmap')
+    psi_cmap = pt.shiftedColorMap(cmocean.cm.curl, -40, 100.25, 'psi_cmap')
 
-    for k, t in zip(keys, ['a)', 'c)', 'e)']):
+    for k, t, l in zip(keys, ['a)', 'c)', 'e)'], ['1', '0.25', '0.1']):
         fig, axs = pt.map_weddell(190, 95)
         cf = axs.contourf(psi_mean[k]['xu_ocean'], psi_mean[k]['yt_ocean'], psi_mean[k], levels = np.arange(-40, 100.25, 2.5), cmap = psi_cmap, extend = 'both', transform = ccrs.PlateCarree())
         ct = axs.contour(pvor[k]['xt_ocean'], pvor[k]['yt_ocean'], pvor[k]*1e6, levels = pv_lvls, colors = ['k'], linestyles = 'solid', linewidths = 0.6, transform = ccrs.PlateCarree())
         axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1.5, transform = ccrs.PlateCarree())
-        axs.text(0.98, 0.08, k+'$^{/circ}$', horizontalalignment = 'right', transform = axs.transAxes, bbox = dict(boxstyle = 'round', facecolor = 'white'));
+        axs.text(0.98, 0.08, l+'$^{\\circ}$', horizontalalignment = 'right', transform = axs.transAxes, bbox = dict(boxstyle = 'round', facecolor = 'white'));
         axs.text(-0.08, 0.93, t, horizontalalignment = 'right', transform = axs.transAxes);
         cbar = fig.colorbar(cf, ax = axs, orientation = 'horizontal', shrink = .6)
         cbar.set_label('$\\psi$ [Sv]')
         plt.savefig(wdir+'psi_b-mean-'+k+'deg.jpg')
 
-    for k, t in zip(keys, ['a)', 'c)', 'e)']):
+    for k, t, l in zip(keys, ['b)', 'd)', 'f)'], ['1', '0.25', '0.1']):
         fig, axs = pt.map_weddell(190, 95)
-        cf = axs.contourf(psi_sdev[k]['xu_ocean'], psi_sdev[k]['yt_ocean'], psi_sdev[k], levels = np.arange(0, 32, 2), cmap = cmocean.cm.amp, extend = 'both', transform = ccrs.PlateCarree())
+        cf = axs.contourf(psi_sdev[k]['xu_ocean'], psi_sdev[k]['yt_ocean'], psi_sdev[k], levels = np.arange(0, 32, 2), cmap = cmocean.cm.amp, extend = 'max', transform = ccrs.PlateCarree())
         ct = axs.contour(pvor[k]['xt_ocean'], pvor[k]['yt_ocean'], pvor[k]*1e6, levels = pv_lvls, colors = ['k'], linestyles = 'solid', linewidths = 0.6, transform = ccrs.PlateCarree())
         axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1.5, transform = ccrs.PlateCarree())
-        axs.text(0.98, 0.08, k+'$^{/circ}$', horizontalalignment = 'right', transform = axs.transAxes, bbox = dict(boxstyle = 'round', facecolor = 'white'));
+        axs.text(0.98, 0.08, l+'$^{\\circ}$', horizontalalignment = 'right', transform = axs.transAxes, bbox = dict(boxstyle = 'round', facecolor = 'white'));
         axs.text(-0.08, 0.93, t, horizontalalignment = 'right', transform = axs.transAxes);
         cbar = fig.colorbar(cf, ax = axs, orientation = 'horizontal', shrink = .6)
         cbar.set_label('$\\psi$ [Sv]')
@@ -323,7 +322,7 @@ def plot_figure_7():
                  transform = ccrs.PlateCarree())
         axs.plot(bndy[k][:,0], bndy[k][:,1], color = 'k', linestyle = 'solid',
                  linewidth = 1.5, transform = ccrs.PlateCarree())
-        axs.text(0.98, 0.08, k+'${\circ}$', horizontalalignment = 'right',
+        axs.text(0.98, 0.08, k+'$^{\circ}$', horizontalalignment = 'right',
                  transform = axs.transAxes, bbox = dict(boxstyle = 'round', facecolor = 'white'));
         axs.text(-0.08, 0.93, t+')', horizontalalignment = 'right',
                  transform = axs.transAxes);
