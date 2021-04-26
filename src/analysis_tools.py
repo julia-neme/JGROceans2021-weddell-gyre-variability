@@ -9,6 +9,31 @@
 
 ###############################################################################
 
+def calculate_buoyancy_flux():
+
+    import numpy as np
+    import xarray as xr
+
+    bflu = {}
+    for k in keys:
+
+        net_sfc_heating = xr.open_dataset(wdir+'/raw_outputs/net_sfc_heating-monthly-1958_2018-'+k+'deg.nc')['net_sfc_heating']
+        frazil_3d_int_z = xr.open_dataset(wdir+'/raw_outputs/frazil_3d_int_z-monthly-1958_2018-'+k+'deg.nc')['frazil_3d_int_z']
+        pme_river = xr.open_dataset(wdir+'/raw_outputs/pme_river-monthly-1958_2018-'+k+'deg.nc')['pme_river']
+        pme_river = xr.open_dataset(wdir+'/raw_outputs/sfc_sal_flux_ice-monthly-1958_2018-'+k+'deg.nc')['sfc_sal_flux_ice']
+        pme_river = xr.open_dataset(wdir+'/raw_outputs/sfc_sal_flux_ice_restore-monthly-1958_2018-'+k+'deg.nc')['sfc_sal_flux_restore']
+
+        temp = xr.open_dataset(wdir+'/raw_outputs/temp-monthly-1958_2018-'+k+'deg.nc')['temp'].isel(st_ocean = 0)-273.15
+        salt = xr.open_dataset(wdir+'/raw_outputs/salt-monthly-1958_2018-'+k+'deg.nc')['salt'].isel(st_ocean = 0)
+        salt_abs = gsw.SA_from_SP(salt, 0, salt['xt_ocean'], salt['yt_ocean'])
+        alpha = gsw.alpha(salt_abs, temp, 0)
+        rho = gsw.rho(salt_abs, temp, 0)
+        beta = gsw.beta(salt_abs, temp, 0)
+
+        bflu[k] = (9.8*alpha)/(3850*rho)*(net_sfc_heating + frazil_3d_int_z) + 9.8*beta*(((pme_river - sfc_sal_flux_ice - sfc_sal_flux_restore))/1000)*salt_abs
+        bflu[k] = xr.DataArray(bflu[k], name = 'buoyancy_flux')
+        bflu[k].to_netcdf(wdir+'/bflux-monthly-1958_2018-'+k+'deg.nc')
+
 def g02202_aice(month):
 
     import matplotlib.pyplot as plt
@@ -76,22 +101,22 @@ def load_sea_level(keys, wdir):
     artificial global annual cycle removed and an offset applied.
     """
 
-    obs = xr.open_dataset(wdir+'/CS2_combined_Southern_Ocean_2011-2016_regridded.nc')
+    obs = xr.open_dataset(wdir+'/observations/CS2_combined_Southern_Ocean_2011-2016_regridded.nc')
     obs = obs.rename(({'X':'xt_ocean', 'Y':'yt_ocean', 'date':'time'}))
     obs = obs.sortby('yt_ocean', ascending = True)
     obs['_lon_adj'] = xr.where(obs['xt_ocean'] > 80, obs['xt_ocean'] - 360,
                                obs['xt_ocean'])
     obs = obs.swap_dims({'xt_ocean': '_lon_adj'})
-    obs = obs.sel(**{'_lon_adj': sorted(obs._lon_adj)}).drop('xt_ocean'))
+    obs = obs.sel(**{'_lon_adj': sorted(obs._lon_adj)}).drop('xt_ocean')
     obs = obs.rename({'_lon_adj': 'xt_ocean'})
 
     mod = {}
     for k in keys:
-        mod[k] = xr.open_dataset(wdir+'/sea_level-monthly-2011_2016-'+k+'deg.nc')['sea_level']
+        mod[k] = xr.open_dataset(wdir+'/raw_outputs/sea_level-monthly-2011_2016-'+k+'deg.nc')['sea_level']
         mod[k] = mod[k].sel(time = slice('2011-01-01', '2017-01-01'))
         mod[k] = mod[k]*100
         # Filter an artifical global sea level annual cycle
-        etag = xr.open_dataset(wdir+'/eta_global-monthly-1958_2018-'+k+'deg.nc')['eta_global'].squeeze()
+        etag = xr.open_dataset(wdir+'/raw_outputs/eta_global-monthly-1958_2018-'+k+'deg.nc')['eta_global'].squeeze()
         etag = etag.groupby('time.month').mean(dim = 'time')*100
         mod[k] = mod[k].groupby('time.month') - etag
         # Offset
@@ -114,7 +139,7 @@ def gyre_boundary(keys, wdir, field):
 
     bndy = {}
     for k in keys:
-        psib = xr.open_dataset(wdir+'/psi_b-monthly-1958_2018-'+k+'deg.nc')
+        psib = xr.open_dataset(wdir+'/der_outputs/psi_b-monthly-1958_2018-'+k+'deg.nc')
         if field == 'mean':
             psib = psib['psi_b'].mean(dim = 'time')
             cset = plt.contour(psib['xu_ocean'], psib['yt_ocean'], psib,
@@ -124,61 +149,60 @@ def gyre_boundary(keys, wdir, field):
             else:
                 bndy[k] = cset.allsegs[0][0]
             plt.close('all')
-        elif field = 'seasonal':
+        elif field == 'seasonal':
             psib = psib['psi_b'].groupby('time.month').mean(dim = 'time')
             psi_jja = psib.isel(month = [5, 6, 7]).mean(dim = 'month')
             cset = plt.contour(psi_jja['xu_ocean'], psi_jja['yt_ocean'],
                                psi_jja, levels = [-12])
-            bndy_jja = cset.allsegs[0][2]
+            bndy_jja = cset.allsegs[0][0]
             psi_djf = psib.isel(month = [11, 0, 1]).mean(dim = 'month')
             cset = plt.contour(psi_djf['xu_ocean'], psi_djf['yt_ocean'],
                                psi_djf, levels = [-12])
-            bndy_djf = cset.allsegs[0][3]
+            bndy_djf = cset.allsegs[0][0]
             plt.close('all')
             bndy = [bndy_djf, bndy_jja]
     return bndy
+
+
+def edof_scott(A):
+    import xarray as xr
+    import numpy as np
+    import dask as dsk
+    axis = 0 # Generally 'time' is axis zero, or use A.get_axis_num('time')
+    edof = dsk.array.apply_along_axis(edof_1d, axis, A)
+    return np.nanmean(edof)
 
 def edof(A):
     """
     Calculates effective degrees of freedom using the integral timescale as per
     Emery and Thompson's book.
     """
+    import dask as dsk
     import numpy as np
+    import xarray as xr
     from scipy import integrate
 
-    if len(np.shape(A)) == 1:
+    def edof_1d(A):
         N = len(A)
-        x = A - A.mean(dim = 'time')
+        x = A - A.mean()
         c = np.correlate(x, x, 'full')
         c = c[N-1:]/(N-1-np.arange(0, N, 1))
         n = 0
         while (c[n] > 0) and (n < N/2):
             n = n+1
         T = integrate.trapz(c[:n])/c[0]
-        edof = N/(2*T)
-    else:
-        N = len(A['time'])
-        A = A - A.mean(dim = 'time')
-        p = np.where(A.isel(time = 0) != np.isnan(A.isel(time = 0)))
-        edof = np.empty(np.shape(A.isel(time = 0)))*np.nan
-        for i in range(0, len(A['xt_ocean'])):
-            for j in range(0, len(A['yt_ocean'])):
-                if any(np.isnan(A.isel(xt_ocean = i, yt_ocean = j))):
-                    pass
-                else:
-                    x = A.isel(xt_ocean = i, yt_ocean = j)
-                    c = np.correlate(x, x, 'full')
-                    c = c[N-1:]/(N-1-np.arange(0, N, 1))
-                    n = 0
-                    while (c[n] > 0) and (n < N/2):
-                        n = n+1
-                    T = integrate.trapz(c[:n])/c[0]
-                    if np.isinf(N/(2*T)):
-                        pass
-                    else:
-                        edof[j, i] = N/(2*T)
-        edof = np.nanmean(edof)
+        if np.isinf(N/(2*T)):
+            edof = np.nan
+        else:
+            edof = N/(2*T)
+        return edof
 
+    if len(np.shape(A)) == 1:
+        edof = edof_1d(A)
+    else:
+        axis = 0
+        edof_matrix = dsk.array.apply_along_axis(edof_1d, axis, A)
+        edof = np.nanmean(edof_matrix).compute()
     return edof
 
 def linear_correlation(A, B, *, lagB = False):
@@ -300,11 +324,11 @@ def load_temp_salt_model(key, wdir, ts_hydro):
     import xarray as xr
     # CORRECT HOW WE LOAD..
     if key == '01':
-        temp = xr.open_dataset(wdir+'/pot_temp_hydrography-'+key+'deg.nc')['pot_temp'] - 273.15
-        salt = xr.open_dataset(wdir+'/salt_hydrography-'+key+'deg.nc')['salt']
+        temp = xr.open_dataset(wdir+'/raw_outputs/pot_temp_hydrography-'+key+'deg.nc')['pot_temp'] - 273.15
+        salt = xr.open_dataset(wdir+'/raw_outputs/salt_hydrography-'+key+'deg.nc')['salt']
     else:
-        temp = xr.open_dataset(wdir+'/pot_temp-monthly-1958_2018-'+key+'deg.nc')['pot_temp'] - 273.15
-        salt = xr.open_dataset(wdir+'/salt-monthly-1958_2018-'+key+'deg.nc')['salt']
+        temp = xr.open_dataset(wdir+'/raw_outputs/pot_temp-monthly-1958_2018-'+key+'deg.nc')['pot_temp'] - 273.15
+        salt = xr.open_dataset(wdir+'/raw_outputs/salt-monthly-1958_2018-'+key+'deg.nc')['salt']
     yrmh = np.array([ts_hydro['year'].values, ts_hydro['month'].values])
     unqe = np.unique(yrmh, axis = 1)
     temp_times = temp.sel(time = str(unqe[0,0])+'-'+f'{unqe[1,0]:02}',
@@ -351,6 +375,7 @@ def a12_hydrography(wdir):
 
     import gsw
     import numpy as np
+    import os
     import xarray as xr
     from metpy.interpolate import interpolate_to_points
     from glob import glob
@@ -517,7 +542,7 @@ def a12_hydrography(wdir):
         return var_interp_xarray
 
     direc = ['a12_nc_ctd', 's04a_nc_ctd', 'sr04_e_nc_ctd', 'a12_1999a_nc_ctd', '06AQ20050122_nc_ctd', '06AQ20071128_nc_ctd', '06AQ20080210_nc_ctd', '06AQ20101128', '06AQ20141202_nc_ctd']
-    ht = xr.open_dataset(wdir+'/raw_outputs/ht-01deg.nc')['ht']
+    ht = xr.open_dataset(wdir+'/raw_outputs/ocean_grid-01deg.nc')['ht']
     ht = ht.sel(xt_ocean = slice(-30, 30), yt_ocean = slice(-80, 50))
     for d in direc:
         prof = load_stations(d)
@@ -541,17 +566,27 @@ def a12_mean_pot_rho(dset, hydro_or_model):
     import gsw
     import xarray as xr
 
-    salt = dset['salt']
-    pres = dset['pressure']
-    lon = dset['lon']
-    lat = dset['lat']
-    salt_abs = gsw.SA_from_SP(salt, pres, lon, lat)
     if hydro_or_model == 'hydrography':
+        salt = dset['salt']
+        pres = dset['pressure']
+        lon = dset['lon']
+        lat = dset['lat']
+        salt_abs = gsw.SA_from_SP(salt, pres, lon, lat)
         temp_csv = gsw.CT_from_t(salt_abs, dset['temp'], pres)
+        pot_rho = gsw.sigma0(salt_abs, temp_csv)
+        pot_rho = xr.DataArray(pot_rho, name = 'pot_rho')
+
     elif hydro_or_model == 'model':
-        temp_csv = gsw.CT_from_pt(salt_abs, dset['pot_temp'])
-    pot_rho = gsw.sigma0(salt_abs, temp_csv)
-    pot_rho = xr.DataArray(pot_rho, name = 'pot_rho')
+        pot_rho = {}
+        for k in ['1', '025', '01']:
+            salt = dset[k]['salt']
+            pres = dset[k]['pressure']
+            lon = dset[k]['xt_ocean']
+            lat = dset[k]['yt_ocean']
+            salt_abs = gsw.SA_from_SP(salt, pres, lon, lat)
+            temp_csv = gsw.CT_from_pt(salt_abs, dset[k]['pot_temp'])
+            pot_rho[k] = gsw.sigma0(salt_abs, temp_csv)
+        pot_rho[k] = xr.DataArray(pot_rho[k], name = 'pot_rho')
     return pot_rho
 
 def a12_model(keys, hydro, wdir):
@@ -580,7 +615,7 @@ def a12_model(keys, hydro, wdir):
                    '2014-12-15T00:00:00.000000000',
                    '2015-01-15T00:00:00.000000000']
     model = {};
-    for k in keys[0:1]:
+    for k in keys:
 
         temp_access = xr.open_dataset(wdir+'/raw_outputs/pot_temp-monthly-A12-'+k+'deg.nc')['pot_temp'] - 273.15
         temp_t = temp_access.sel(time = time_select[0], method = 'nearest')
@@ -616,7 +651,7 @@ def potential_vorticity(keys, wdir):
     import xarray as xr
     pvor = {}
     for k in keys:
-        ht = xr.open_dataset(wdir+'ocean_grid-'+k+'deg.nc')['ht'].sel(xt_ocean = slice(-70, 80), yt_ocean = slice(-80, -50))
+        ht = xr.open_dataset(wdir+'/raw_outputs/ocean_grid-'+k+'deg.nc')['ht'].sel(xt_ocean = slice(-70, 80), yt_ocean = slice(-80, -50))
         pvor[k] = 2*7.292e-5*np.sin(ht['yt_ocean']*np.pi/180)/ht
 
     pvor['1'] = pvor['1'].rolling(xt_ocean = 2).mean().rolling(yt_ocean = 2).mean()
@@ -631,16 +666,17 @@ def gyre_strength(keys, wdir, timescale):
 
     gstr = {}
     for k in keys:
-        psib = xr.open_dataset(wdir+'psi_b-monthly-1958_2018-'+k+'deg.nc')
+        psib = xr.open_dataset(wdir+'/der_outputs/psi_b-monthly-1958_2018-'+k+'deg.nc')
         psib = psib.sel(xu_ocean = slice(-60, 10), yt_ocean = slice(-75, -57))
         if timescale == 'seasonal':
-            psib = psib['psi_b'].groupby('time.month').mean(dim = 'time')
+            psib = psib.groupby('time.month').mean(dim = 'time')
             gstr[k] = psib.min(dim = ['xu_ocean', 'yt_ocean'])
         elif timescale == 'interannual':
             gstr_c = psib.groupby('time.month').mean(dim = 'time')
             gstr_c = gstr_c.min(dim = ['xu_ocean', 'yt_ocean'])
             gstr[k] = psib.min(dim = ['xu_ocean', 'yt_ocean'])
             gstr[k] = gstr[k].groupby('time.month') - gstr_c
+        gstr[k] = gstr[k].rename({'psi_b':'gstr'})
 
     return gstr
 
@@ -660,27 +696,27 @@ def wind_stress_curl(keys, wdir, timescale):
 
     scrl = {}
     for k in keys:
-        taux = xr.open_dataset(wdir+'tau_x-monthly-1958_2018-'+k+'deg.nc')
+        taux = xr.open_dataset(wdir+'/raw_outputs/tau_x-monthly-1958_2018-'+k+'deg.nc')
         taux = taux.sel(xu_ocean = slice(-60, 50), yu_ocean = slice(-75, -57))
-        tauy = xr.open_dataset(wdir+'tau_y-monthly-1958_2018-'+k+'deg.nc')
+        tauy = xr.open_dataset(wdir+'/raw_outputs/tau_y-monthly-1958_2018-'+k+'deg.nc')
         tauy = tauy.sel(xu_ocean = slice(-60, 50), yu_ocean = slice(-75, -57))
-        hu = xr.open_dataset(wdir+'ocean_grid'+k+'deg.nc')['hu']
-        if timescale = 'seasonal':
+        hu = xr.open_dataset(wdir+'/raw_outputs/ocean_grid-'+k+'deg.nc')['hu']
+        if timescale == 'seasonal':
             taux = taux['tau_x'].groupby('time.month').mean(dim = 'time')
             tauy = tauy['tau_y'].groupby('time.month').mean(dim = 'time')
             scrl[k] = curl(taux, tauy)
             scrl[k] = scrl[k].where(hu > 1000).mean(dim = ['xu_ocean',
-                                                           'yt_ocean'])
+                                                           'yu_ocean'])
         elif timescale == 'interannual':
-            scrl[k] = curl(taux, tauy)
+            scrl[k] = curl(taux['tau_x'], tauy['tau_y'])
             scrl[k] = scrl[k].where(hu > 1000).mean(dim = ['xu_ocean',
-                                                           'yt_ocean'])
-            scrl_c = curl(taux.groupby('time.month').mean(dim = 'time'),
-                          tauy.groupby('time.month').mean(dim = 'time'))
+                                                           'yu_ocean'])
+            scrl_c = curl(taux['tau_x'].groupby('time.month').mean(dim = 'time'),
+                          tauy['tau_y'].groupby('time.month').mean(dim = 'time'))
             scrl_c = scrl_c.where(hu > 1000).mean(dim = ['xu_ocean',
-                                                         'yt_ocean'])
+                                                         'yu_ocean'])
             scrl[k] = scrl[k].groupby('time.month') - scrl_c
-        return scrl
+    return scrl
 
 def buoyancy_flux(keys, wdir, timescale):
 
@@ -690,43 +726,30 @@ def buoyancy_flux(keys, wdir, timescale):
 
     bflu = {}
     for k in keys:
-
-        net_sfc_heating = xr.open_dataset(wdir+'net_sfc_heating-monthly-1958_2018-'+k+'deg.nc')['net_sfc_heating']
-        frazil_3d_int_z = xr.open_dataset(wdir+'frazil_3d_int_z-monthly-1958_2018-'+k+'deg.nc')['frazil_3d_int_z']
-        pme_river = xr.open_dataset(wdir+'pme_river-monthly-1958_2018-'+k+'deg.nc')['pme_river']
-
-        temp = xr.open_dataset(wdir+'temp-monthly-1958_2018-'+k+'deg.nc')['temp'].isel(st_ocean = 0)-273.15
-        salt = xr.open_dataset(wdir+'salt-monthly-1958_2018-'+k+'deg.nc')['salt'].isel(st_ocean = 0)
-        salt_abs = gsw.SA_from_SP(salt, 0, salt['xt_ocean'], salt['yt_ocean'])
-        alpha = gsw.alpha(salt_abs, temp, 0)
-        rho = gsw.rho(salt_abs, temp, 0)
-        beta = gsw.beta(salt_abs, temp, 0)
-
-        bflu[k] = (9.8*alpha)/(3850*rho)*(net_sfc_heating + frazil_3d_int_z) + 9.8*beta*(pme_river/1000)*salt_abs
-        bflu[k] = xr.DataArray(bflu[k], name = 'buoyancy_flux')
+        bflu[k] = xr.open_dataset(wdir+'/bflux-monthly-1958_2018-'+k+'deg.nc')['buoyancy_flux']
         bflu[k] = bflu[k].sel(xt_ocean = slice(-60, 50),
                             yt_ocean = slice(None, -57))
-        ht = xr.open_dataset(wdir+'ocean_grid'+k+'deg.nc')['ht']
+        ht = xr.open_dataset(wdir+'/raw_outputs/ocean_grid-'+k+'deg.nc')['ht']
         if timescale == 'seasonal':
-            bflu[k] = bflu[k].groupby('time.month').mean(dim = 'month')
-            bflu[k] = bflu[k].where(ht[k] < 1000).mean(dim = ['xt_ocean',
+            bflu[k] = bflu[k].groupby('time.month').mean(dim = 'time')
+            bflu[k] = bflu[k].where(ht < 1000).mean(dim = ['xt_ocean',
                                                             'yt_ocean'])
         elif timescale == 'interannual':
-            bflu_c = bflu[k].groupby('time.month').mean(dim = 'month')
-            bflu_c = bflu_c.where(ht[k] < 1000).mean(dim = ['xt_ocean',
+            bflu_c = bflu[k].groupby('time.month').mean(dim = 'time')
+            bflu_c = bflu_c.where(ht < 1000).mean(dim = ['xt_ocean',
                                                           'yt_ocean'])
-            bflu[k] = bflu[k].where(ht[k] < 1000).mean(dim = ['xt_ocean',
+            bflu[k] = bflu[k].where(ht < 1000).mean(dim = ['xt_ocean',
                                                             'yt_ocean'])
             bflu[k] = bflu[k].groupby('time.month') - bflu_c
 
-        return bflu
+    return bflu
 
 def psi_b_seasonal(keys, wdir):
 
     import xarray as xr
     psib = {}
     for k in keys:
-        psib_t = xr.open_dataset(wdir+'psi_b-monthly-1958_2018-'+k+'deg.nc')
+        psib_t = xr.open_dataset(wdir+'/der_outputs/psi_b-monthly-1958_2018-'+k+'deg.nc')
         psib[k] = psib_t['psi_b'].groupby('time.month').mean(dim = 'time')
         psib[k] = psib[k] - psib_t.mean(dim = 'time')
     return psib
@@ -735,7 +758,7 @@ def slp_seasonal(wdir):
 
     import xarray as xr
 
-    slp = xr.open_dataset(wdir+'psl-monthly-1958_2019.nc')['psl']
+    slp = xr.open_dataset(wdir+'/forcing/psl-monthly-1958_2019.nc')['psl']
     slp = slp.isel(time = slice(None, -1))
     slp = slp.groupby('time.month').mean(dim = 'time')
     return slp
@@ -748,28 +771,15 @@ def buoyancy_flux_seasonal(keys, wdir):
 
     bflu = {}
     for k in keys:
-        net_sfc_heating = xr.open_dataset(wdir+'net_sfc_heating-monthly-1958_2018-'+k+'deg.nc')['net_sfc_heating']
-        frazil_3d_int_z = xr.open_dataset(wdir+'frazil_3d_int_z-monthly-1958_2018-'+k+'deg.nc')['frazil_3d_int_z']
-        pme_river = xr.open_dataset(wdir+'pme_river-monthly-1958_2018-'+k+'deg.nc')['pme_river']
-
-        temp = xr.open_dataset(wdir+'temp-monthly-1958_2018-'+k+'deg.nc')['temp'].isel(st_ocean = 0)-273.15
-        salt = xr.open_dataset(wdir+'salt-monthly-1958_2018-'+k+'deg.nc')['salt'].isel(st_ocean = 0)
-        salt_abs = gsw.SA_from_SP(salt, 0, salt['xt_ocean'], salt['yt_ocean'])
-        alpha = gsw.alpha(salt_abs, temp, 0)
-        rho = gsw.rho(salt_abs, temp, 0)
-        beta = gsw.beta(salt_abs, temp, 0)
-
-        bflu[k] = (9.8*alpha)/(3850*rho)*(net_sfc_heating + frazil_3d_int_z) + 9.8*beta*(pme_river/1000)*salt_abs
-        bflu[k] = xr.DataArray(bflu[k], name = 'buoyancy_flux')
-
-        bflu[k] = bflu[k].groupby('time.month').mean(dim = 'month')
+        bflu[k] = xr.open_dataset(wdir+'/bflux-monthly-1958_2018-'+k+'deg.nc')['buoyancy_flux']
+        bflu[k] = bflu[k].groupby('time.month').mean(dim = 'time')
     return bflu
 
 def sam_index(wdir):
     import numpy as np
     import xarray as xr
 
-    slp = xr.open_dataset(wdir+'psl-monthly-1958_2019.nc')['psl'].squeeze()
+    slp = xr.open_dataset(wdir+'/forcing/psl-monthly-1958_2019.nc')['psl'].squeeze()
     slp = slp.sel(lat = slice(-80, -35),
                   time = slice('1958-01-01', '2019-01-01'))
     slp['_longitude_adjusted'] = xr.where(slp['lon'] > 80, slp['lon'] - 360,
@@ -777,8 +787,8 @@ def sam_index(wdir):
     slp = (slp.swap_dims({'lon': '_longitude_adjusted'}).sel(**{'_longitude_adjusted': sorted(slp._longitude_adjusted)}).drop('lon'))
     slp = slp.rename({'_longitude_adjusted': 'lon'})
 
-    P_40 = SLP.sel(lat = -40, method = 'nearest').mean(dim = 'lon')
-    P_65 = SLP.sel(lat = -65, method = 'nearest').mean(dim = 'lon')
+    P_40 = slp.sel(lat = -40, method = 'nearest').mean(dim = 'lon')
+    P_65 = slp.sel(lat = -65, method = 'nearest').mean(dim = 'lon')
     P_40_norm = (P_40 - P_40.mean(dim = 'time'))/P_40.std(dim = 'time')
     P_65_norm = (P_65 - P_65.mean(dim = 'time'))/P_65.std(dim = 'time')
     sam = P_40_norm - P_65_norm
@@ -789,7 +799,7 @@ def eas_index(wdir):
     import numpy as np
     import xarray as xr
 
-    slp = xr.open_dataset(wdir+'psl-monthly-1958_2019.nc')['psl'].squeeze()
+    slp = xr.open_dataset(wdir+'/forcing/psl-monthly-1958_2019.nc')['psl'].squeeze()
     slp = slp.sel(lat = slice(-80, -35),
                   time = slice('1958-01-01', '2019-01-01'))
     slp['_longitude_adjusted'] = xr.where(slp['lon'] > 80, slp['lon'] - 360,
@@ -797,8 +807,8 @@ def eas_index(wdir):
     slp = (slp.swap_dims({'lon': '_longitude_adjusted'}).sel(**{'_longitude_adjusted': sorted(slp._longitude_adjusted)}).drop('lon'))
     slp = slp.rename({'_longitude_adjusted': 'lon'})
 
-    P_72 = SLP.sel(lat = -72, method = 'nearest').sel(lon = slice(-30, 70)).mean(dim = 'lon')
-    P_65 = SLP.sel(lat = -65, method = 'nearest').sel(lon = slice(-30, 70)).mean(dim = 'lon')
+    P_72 = slp.sel(lat = -72, method = 'nearest').sel(lon = slice(-30, 70)).mean(dim = 'lon')
+    P_65 = slp.sel(lat = -65, method = 'nearest').sel(lon = slice(-30, 70)).mean(dim = 'lon')
     P_72_norm = (P_72 - P_72.mean(dim = 'time'))/P_72.std(dim = 'time')
     P_65_norm = (P_65 - P_65.mean(dim = 'time'))/P_65.std(dim = 'time')
     eas = P_72_norm - P_65_norm
@@ -810,9 +820,9 @@ def get_events(gstr, wdir):
     import numpy as np
     import xarray as xr
 
-    gstr_10rm = gstr.rolling(time = 120, center = True).mean()
-    events_strg = np.where((gstr - gstr_10rm) > 0.8*gstr_10rm.std())[0]
-    events_weak = np.where((gstr - gstr_10rm) < -0.8*gstr_10rm.std())[0]
+    gstr_10rm = -gstr['gstr'].rolling(time = 120, center = True).mean()
+    events_strg = np.where((-gstr['gstr'] - gstr_10rm) > 0.8*gstr_10rm.std())[0]
+    events_weak = np.where((-gstr['gstr'] - gstr_10rm) < -0.8*gstr_10rm.std())[0]
     # Remove events shorter than 6 months
     diff = np.diff(events_strg)
     sep = np.where(diff != 1)[0]
@@ -843,8 +853,10 @@ def get_events(gstr, wdir):
     sep = np.where(np.diff(events_strg) != 1)[0]
     ini = events_strg[sep+1]
     ini = np.insert(ini, 0, events_strg[0])
+    ini = np.insert(ini, ini.size, 672)
     fin = events_strg[sep]
     fin = np.insert(fin, fin.size, events_strg[-1])
+    fin = np.insert(fin, fin.size, 708)
     events_strg_if = np.array([ini, fin])
     sep = np.where(np.diff(events_weak) != 1)[0]
     ini = events_weak[sep+1]
@@ -857,62 +869,61 @@ def get_events(gstr, wdir):
 
 def composites(events, variable, wdir):
 
+    import gsw
     import numpy as np
     import xarray as xr
 
     if variable == 'psi_b':
-        psib = xr.open_dataset(wdir+'psi_b-monthly-1958_2018-01deg.nc')
-        psib_c = psib.groupby('time.month').mean(dim = 'time')
+        psib = xr.open_dataset(wdir+'/der_outputs/psi_b-monthly-1958_2018-01deg.nc')
+        psib_c = psib['psi_b'].groupby('time.month').mean(dim = 'time')
         psib = psib.groupby('time.month') - psib_c
         var = psib.rolling(time = 12, center = True).mean()
-    elif variable == 'bflux':
-        net_sfc_heating = xr.open_dataset(wdir+'net_sfc_heating-monthly-1958_2018-01deg.nc')['net_sfc_heating']
-        frazil_3d_int_z = xr.open_dataset(wdir+'frazil_3d_int_z-monthly-1958_2018-01deg.nc')['frazil_3d_int_z']
-        pme_river = xr.open_dataset(wdir+'pme_river-monthly-1958_2018-01deg.nc')['pme_river']
-        temp = xr.open_dataset(wdir+'temp-monthly-1958_2018-01deg.nc')['temp'].isel(st_ocean = 0)-273.15
-        salt = xr.open_dataset(wdir+'salt-monthly-1958_2018-01deg.nc')['salt'].isel(st_ocean = 0)
-        salt_abs = gsw.SA_from_SP(salt, 0, salt['xt_ocean'], salt['yt_ocean'])
-        alpha = gsw.alpha(salt_abs, temp, 0)
-        rho = gsw.rho(salt_abs, temp, 0)
-        beta = gsw.beta(salt_abs, temp, 0)
-        bflu = (9.8*alpha)/(3850*rho)*(net_sfc_heating + frazil_3d_int_z) + 9.8*beta*(pme_river/1000)*salt_abs
-        bflu = xr.DataArray(bflu, name = 'buoyancy_flux')
+        var = var[variable]
+        ind_events_strg = np.empty([7, 639, 1500])
+        ind_events_weak = np.empty([7, 639, 1500])
+    elif variable == 'buoyancy_flux':
+        bflu = xr.open_dataset(wdir+'/bflux-monthly-1958_2018-01deg.nc')['buoyancy_flux']
         bflu_c = bflu.groupby('time.month').mean(dim = 'time')
         bflu = bflu.groupby('time.month') - bflu_c
+        bflu = xr.DataArray(bflu, name = 'buoyancy_flux')
         var = bflu.rolling(time = 12, center = True).mean()
-    elif variable == 'slp':
-        slp = xr.open_dataset(wdir+'psl-monthly-1958_2019.nc')['psl'].squeeze()
-        slp = slp.sel(lat = slice(-80, -35),
-                      time = slice('1958-01-01', '2019-01-01'))
+        ind_events_strg = np.empty([7, 639, 1500])
+        ind_events_weak = np.empty([7, 639, 1500])
+    elif variable == 'psl':
+        slp = xr.open_dataset(wdir+'/forcing/psl-monthly-1958_2019.nc')['psl'].squeeze()
+        slp = slp.sel(time = slice('1958-01-01', '2019-01-01'))
         slp['_longitude_adjusted'] = xr.where(slp['lon'] > 80, slp['lon'] - 360,
                                               slp['lon'])
         slp = (slp.swap_dims({'lon': '_longitude_adjusted'}).sel(**{'_longitude_adjusted': sorted(slp._longitude_adjusted)}).drop('lon'))
         slp = slp.rename({'_longitude_adjusted': 'lon'})
         slp_c = slp.groupby('time.month').mean(dim = 'time')
         slp = slp.groupby('time.month') - slp_c
+        slp = slp.sel(lon = slice(-70, 80), lat = slice(None, -50))
         var = slp.rolling(time = 12, center = True).mean()
+        ind_events_strg = np.empty([7, 71, 267])
+        ind_events_weak = np.empty([7, 71, 267])
     elif variable == 'aice':
-        aice = xr.open_dataset(path+'aice_m-monthly-1958_2018-01deg.nc')['aice_m']
+        aice = xr.open_dataset(wdir+'/raw_outputs/aice_m-monthly-1958_2018-01deg.nc')['aice_m']
         aice_c =  aice.groupby('time.month').mean(dim = 'time')
         aice = aice.groupby('time.month') -aice_c
         var = aice.rolling(time = 12, center = True).mean()
+        ind_events_strg = np.empty([7, 639, 1500])
+        ind_events_weak = np.empty([7, 639, 1500])
     elif variable == 'tmax':
-        tmax = xr.open_dataset(path+'sub_sfc_tmax-monthly-1958_2018-01deg.nc')['pot_temp']
+        tmax = xr.open_dataset(wdir+'/der_outputs/sub_sfc_tmax-monthly-1958_2018-01deg.nc')['pot_temp']
         tmax_c = tmax.groupby('time.month').mean(dim = 'time')
         tmax = tmax.groupby('time.month') - tmax_c
         var = tmax.rolling(time = 12, center = True).mean()
-
-    ind_events_strg = np.empty([7, 639, 1500])
-    ind_events_weak = np.empty([7, 639, 1500])
-
+        ind_events_strg = np.empty([7, 639, 1500])
+        ind_events_weak = np.empty([7, 639, 1500])
     for i in range(0, 7):
         ind_events_strg[i, :, :] = var.isel(time = slice(events[0][0, i], events[0][1, i])).mean(dim = 'time')
         ind_events_weak[i, :, :] = var.isel(time = slice(events[1][0, i], events[1][1, i])).mean(dim = 'time')
 
     composite = np.mean(ind_events_strg, axis = 0) - np.mean(ind_events_weak, axis = 0)
+    composite = xr.DataArray(composite, dims = var.isel(time=0).squeeze().dims, coords = var.isel(time=0).squeeze().coords)
 
     return composite
-
 
 def composites_correlations(gstr, variable, wdir):
 
@@ -920,31 +931,21 @@ def composites_correlations(gstr, variable, wdir):
     import xarray as xr
 
     if variable == 'bflux':
-        net_sfc_heating = xr.open_dataset(wdir+'net_sfc_heating-monthly-1958_2018-01deg.nc')['net_sfc_heating']
-        frazil_3d_int_z = xr.open_dataset(wdir+'frazil_3d_int_z-monthly-1958_2018-01deg.nc')['frazil_3d_int_z']
-        pme_river = xr.open_dataset(wdir+'pme_river-monthly-1958_2018-01deg.nc')['pme_river']
-        temp = xr.open_dataset(wdir+'temp-monthly-1958_2018-01deg.nc')['temp'].isel(st_ocean = 0)-273.15
-        salt = xr.open_dataset(wdir+'salt-monthly-1958_2018-01deg.nc')['salt'].isel(st_ocean = 0)
-        salt_abs = gsw.SA_from_SP(salt, 0, salt['xt_ocean'], salt['yt_ocean'])
-        alpha = gsw.alpha(salt_abs, temp, 0)
-        rho = gsw.rho(salt_abs, temp, 0)
-        beta = gsw.beta(salt_abs, temp, 0)
-        bflu = (9.8*alpha)/(3850*rho)*(net_sfc_heating + frazil_3d_int_z) + 9.8*beta*(pme_river/1000)*salt_abs
-        bflu = xr.DataArray(bflu, name = 'buoyancy_flux')
+        bflu = xr.open_dataset(wdir+'/bflux-monthly-1958_2018-01deg.nc')['buoyancy_flux']
         bflu_c = bflu.groupby('time.month').mean(dim = 'time')
         bflu = bflu.groupby('time.month') - bflu_c
         var = bflu.rolling(time = 12, center = True).mean()
     elif variable == 'aice':
-        aice = xr.open_dataset(path+'aice_m-monthly-1958_2018-01deg.nc')['aice_m']
+        aice = xr.open_dataset(wdir+'/raw_outputs/aice_m-monthly-1958_2018-01deg.nc')['aice_m']
         aice_c =  aice.groupby('time.month').mean(dim = 'time')
         aice = aice.groupby('time.month') -aice_c
         var = aice.rolling(time = 12, center = True).mean()
     elif variable == 'tmax':
-        tmax = xr.open_dataset(path+'sub_sfc_tmax-monthly-1958_2018-01deg.nc')['pot_temp']
+        tmax = xr.open_dataset(wdir+'/der_outputs/sub_sfc_tmax-monthly-1958_2018-01deg.nc')['pot_temp']
         tmax_c = tmax.groupby('time.month').mean(dim = 'time')
         tmax = tmax.groupby('time.month') - tmax_c
         var = tmax.rolling(time = 12, center = True).mean()
 
-    r, p = linear_correlation(var[6:, -5], gstr[6:, -5])
+    r, p = linear_correlation(var.isel(time = slice(6, -5)), gstr.isel(time = slice(6, -5)))
 
     return p

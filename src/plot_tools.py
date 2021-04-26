@@ -30,14 +30,15 @@ def set_rcParams():
     plt.rcParams['savefig.dpi'] = 300
     plt.rcParams['savefig.bbox'] = 'tight'
     # Default colors for each model resolution
-    clrs = {'1':'brown', '025':'darkgoldenrod', '01':'navy'}
-    alph = {'1':1, '025':1, '01':.7}
+    clrs = {'1':'k', '025':'r', '01':'b'}
+    #alph = {'1':1, '025':1, '01':.7}
 
-    return clrs, alph
+    return clrs#, alph
 
 def custom_colormaps(name):
 
     import matplotlib.colors as mcolors
+    import numpy as np
 
     if name == 'bathymetry':
         cmap_colors = ['#EDF3F3', '#D8E6E7', '#C5DADB', '#B1CDCE', '#A2BEC1',
@@ -129,16 +130,15 @@ def ts_diagram(dset):
 def a12_section():
 
     import matplotlib.pyplot as plt
-    fig, axs = plt.subplots(2, 1, figsize = (95/25.4, 75
-
-    /25.4),
+    fig, axs = plt.subplots(2, 1, figsize = (95/25.4, 65/25.4),
                            gridspec_kw = {'height_ratios':[0.5, 1],
                                           'hspace':.03})
     axs[0].set_ylim(-250, 0)
     axs[0].set_xticks([-67, -62, -57])
     axs[0].set_xticklabels([])
-    axs[0].set_yticks([-250, 0])
-    axs[0].set_yticklabels([250, 0])
+    axs[0].set_yticks([-250, -150, -50, 0])
+    axs[0].set_yticklabels([250, 150, 50, 0])
+    axs[1].set_ylabel('Pressure [dbar]', loc = 'top')
     axs[1].set_ylim(-6000, -250)
     axs[1].set_xticks([-67, -62, -57])
     axs[1].set_xticklabels(['67$^{\circ}$S', '62$^{\circ}$S', '57$^{\circ}$S'])
@@ -181,9 +181,9 @@ def annual_cycles():
     import numpy as np
     from matplotlib.lines import Line2D
 
-    lgnd = [Line2D([0], [0], color = 'brown', lw = 1, label = '1$^{\circ}$'),
-            Line2D([0], [0], color = 'darkgoldenrod', lw = 1, label = '0.25$^{\circ}$'),
-            Line2D([0], [0], color = 'navy', lw = 1, alpha = 0.7, label = '0.1$^{\circ}$'')]
+    lgnd = [Line2D([0], [0], color = 'k', lw = 1, label = '1$^{\circ}$'),
+            Line2D([0], [0], color = 'r', lw = 1, label = '025$^{\circ}$'),
+            Line2D([0], [0], color = 'b', lw = 1, label = '01$^{\circ}$')]
 
     fig = plt.figure(figsize = (100/25.4, 100/25.4))
     axs = [fig.add_subplot(311), fig.add_subplot(312), fig.add_subplot(313)]
@@ -207,14 +207,17 @@ def annual_cycles():
 def interannual_time_series():
 
     import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    import matplotlib.patches as mpatches
     import numpy as np
     from matplotlib.lines import Line2D
+    from matplotlib.ticker import AutoMinorLocator
 
-    lgnd = [Line2D([0], [0], color = 'brown', lw = 1, label = '1$^{\circ}$'),
-            Line2D([0], [0], color = 'darkgoldenrod', lw = 1,
-            label = '0.25$^{\circ}$'),
-            Line2D([0], [0], color = 'navy', lw = 1, alpha = 0.7,
-            label = '0.1$^{\circ}$')]
+    lgnd = [Line2D([0], [0], color = 'k', lw = 1, label = '1$^{\circ}$'),
+            Line2D([0], [0], color = 'r', lw = 1, label = '025$^{\circ}$'),
+            Line2D([0], [0], color = 'b', lw = 1, label = '01$^{\circ}$'),
+            mpatches.Patch(color = 'mistyrose', label = 'Strong events'),
+            mpatches.Patch(color = 'lavender', label = 'Weak events')]
 
     fig = plt.figure(figsize = (190/25.4, 150/25.4))
     axs = [fig.add_subplot(511), fig.add_subplot(512), fig.add_subplot(513), fig.add_subplot(514), fig.add_subplot(515)]
@@ -224,10 +227,9 @@ def interannual_time_series():
         axs[i+1].spines['top'].set_visible(False)
         axs[i].set_xticklabels([])
         axs[i].tick_params(bottom = False)
-    axs[-1].xaxis.set_minor_locator(mdates.YearLocator())
     for ax, t in zip(axs, ['a)', 'b)', 'c)', 'd)', 'e)']):
         ax.text(0.01, 0.8, t, horizontalalignment = 'left', transform = ax.transAxes, fontsize = 8)
-    axs[0].legend(handles = lgnd, ncol = 3, bbox_to_anchor = (0.5, 1.02),
+    axs[0].legend(handles = lgnd, ncol = 5, bbox_to_anchor = (0.5, 1.02),
                   loc = 'lower center', frameon = False, fontsize = 8)
     axs[0].set_ylabel('Strength \n [Sv]', fontsize = 8)
     axs[1].set_ylabel('$| \\nabla \\times \\tau |$ \n [10$^{-7}$ N m$^{-3}$]',
@@ -236,5 +238,8 @@ def interannual_time_series():
                       fontsize = 8)
     axs[3].set_ylabel('SAM \n index', fontsize = 8)
     axs[4].set_ylabel('EAS \n index', fontsize = 8)
+    axs[4].set_xticks(np.arange(12*2, 61*12+12, 12*5))
+    axs[4].set_xticklabels(np.arange(1960, 2020, 5))
+    axs[4].xaxis.set_minor_locator(AutoMinorLocator(n = 5));
 
     return fig, axs
