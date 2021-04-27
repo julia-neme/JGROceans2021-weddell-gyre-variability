@@ -342,6 +342,26 @@ def plot_figure_7():
     bndy = at.gyre_boundary(keys, wdir, 'mean')
     temp_cmap = pt.custom_colormaps('subsfc_tmax')
 
+    lat = xr.open_dataset(wdir+'/observations/WeddellGyre_OM_Period2001to2005_potTpSal.nc')['Latitude (DegN)']
+    lon = xr.open_dataset(wdir+'/observations/WeddellGyre_OM_Period2001to2005_potTpSal.nc')['Longitude (DegE)']
+    reeve = xr.open_dataset(wdir+'/observations/Reeve-pottemp-mean.nc')
+    subsfc_tmax_obs = reeve['Potential Temperature (DegC)'].max(dim = 'level')
+
+    fig, axs = pt.map_weddell(190, 95)
+    cf = axs.contourf(lon, lat, subsfc_tmax_obs.transpose(),
+                      levels = np.arange(-2, 4.25, .25), cmap = temp_cmap, extend = 'both', transform = ccrs.PlateCarree())
+    axs.plot(iso1['x'], iso1['y'], color = 'k', linewidth = 1,
+             transform = ccrs.PlateCarree())
+    axs.text(0.98, 0.08, 'Reeve et al. 2016', horizontalalignment = 'right',
+             transform = axs.transAxes, bbox = dict(boxstyle = 'round', facecolor = 'white'));
+    axs.text(-0.08, 0.93, 'a)', horizontalalignment = 'right',
+             transform = axs.transAxes);
+    cbar = fig.colorbar(cf, ax = axs, orientation = 'horizontal',
+                       shrink = .6)
+    cbar.set_ticks(np.arange(-2, 5, 1))
+    cbar.set_label('$\\theta$ [$^{\circ}$C]')
+    plt.savefig(wdir+'/figure_7_a.jpg')
+
     for k, t in zip(keys, ['b', 'c', 'd']):
         fig, axs = pt.map_weddell(190, 95)
         cf = axs.contourf(subsfc_tmax[k]['xt_ocean'],
