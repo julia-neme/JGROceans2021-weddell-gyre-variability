@@ -31,9 +31,8 @@ def set_rcParams():
     plt.rcParams['savefig.bbox'] = 'tight'
     # Default colors for each model resolution
     clrs = {'1':'k', '025':'r', '01':'b'}
-    #alph = {'1':1, '025':1, '01':.7}
 
-    return clrs#, alph
+    return clrs
 
 def custom_colormaps(name):
 
@@ -46,9 +45,11 @@ def custom_colormaps(name):
                        '#565A77', '#4A4968']
         cmap = mcolors.LinearSegmentedColormap.from_list(name = None,
                colors = cmap_colors, N = 250, gamma = 1)
+
     elif name == 'ts_diags':
         cmap = mcolors.LinearSegmentedColormap.from_list(name = None,
                colors = plt.get_cmap('Blues')(np.linspace(.4, 1, 5)), N = 5)
+
     elif name == 'subsfc_tmax':
         cmap_colors =  ['#353992', '#7294C2', '#A5C4DD', '#F9FCCF', '#F2CF85',
                         '#CB533B']
@@ -58,11 +59,6 @@ def custom_colormaps(name):
     return cmap
 
 def map_weddell(size_x, size_y):
-
-    """
-    Args          :
-         size_x, size_y = figure sizes in mm.
-    """
 
     fig = plt.figure(figsize = (size_x/25.4, size_y/25.4))
     axs = fig.add_subplot(projection = ccrs.Mercator(central_longitude = 5))
@@ -87,7 +83,8 @@ def ts_diagram(dset):
 
     fig, ax = plt.subplots(figsize = (95/25.4, 80/25.4))
     ax.plot([32.5, 35.25], [1.5, 1.5], color = 'k', linewidth = 1)
-    ax.plot([32.5, 35.25], [-1.9, -1.9], color = 'k', linewidth = 1)
+    ax.plot([34, 34, 35, 35], [-2.5, -1.9, -1.9, -2.5], color = 'k', 
+            linewidth = 1)
     ax.plot([34.57, 34.57], [3, 1.5], color = 'k', linewidth = 1)
     ax.plot([34.57, 34.57, 35.25], [1.5, 0, 0], color = 'k', linewidth = 1)
     ax.plot([34.63, 34.63, 35.25], [0, -0.7, -0.7], color = 'k', linewidth = 1)
@@ -95,7 +92,7 @@ def ts_diagram(dset):
             linewidth = 1)
     ax.text(32.55, 1.55, 'ACC')
     ax.text(32.55, -1.75, 'SW')
-    ax.text(32.55, -2.15, 'ISW')
+    ax.text(34.05, -2.15, 'ISW')
     ax.text(35.2, 1.55, 'CDW', horizontalalignment = 'right')
     ax.text(35.2, 0.05, 'WDW', horizontalalignment = 'right')
     ax.text(35.2, -0.65, 'WSDW', horizontalalignment = 'right')
@@ -111,7 +108,7 @@ def ts_diagram(dset):
     sigma = gsw.sigma0(salt_mesh, temp_mesh)
 
     cc = ax.contour(salt_mesh, temp_mesh, sigma, 10, colors = 'k',
-                    interpolation = 'none', linewidths = .7, zorder = 0);
+                    interpolation = 'none', linewidths = .7, zorder = 0)
     ax.clabel(cc, inline = True, fontsize = 7)
 
     depth = gsw.z_from_p(dset['pressure'], -65).values
@@ -152,18 +149,18 @@ def shiftedColorMap(cmap, min_val, max_val, name):
     import matplotlib.colors as mcolors
     import matplotlib.pyplot as plt
     import numpy as np
+
     epsilon = 0.001
     start, stop = 0.0, 1.0
     min_val, max_val = min(0.0, min_val), max(0.0, max_val)
     midpoint = 1.0 - max_val/(max_val + abs(min_val))
     cdict = {'red': [], 'green': [], 'blue': [], 'alpha': []}
-    # regular index to compute the colors
     reg_index = np.linspace(start, stop, 257)
-    # shifted index to match the data
-    shift_index = np.hstack([np.linspace(0.0, midpoint, 128, endpoint=False), np.linspace(midpoint, 1.0, 129, endpoint=True)])
+    shift_index = np.hstack([np.linspace(0.0, midpoint, 128, endpoint = False), 
+                             np.linspace(midpoint, 1, 129, endpoint = True)])
     for ri, si in zip(reg_index, shift_index):
         if abs(si - midpoint) < epsilon:
-            r, g, b, a = cmap(0.5) # 0.5 = original midpoint.
+            r, g, b, a = cmap(0.5) 
         else:
             r, g, b, a = cmap(ri)
         cdict['red'].append((si, r, r))
@@ -182,8 +179,8 @@ def annual_cycles():
     from matplotlib.lines import Line2D
 
     lgnd = [Line2D([0], [0], color = 'k', lw = 1, label = '1$^{\circ}$'),
-            Line2D([0], [0], color = 'r', lw = 1, label = '025$^{\circ}$'),
-            Line2D([0], [0], color = 'b', lw = 1, label = '01$^{\circ}$')]
+            Line2D([0], [0], color = 'r', lw = 1, label = '0.25$^{\circ}$'),
+            Line2D([0], [0], color = 'b', lw = 1, label = '0.1$^{\circ}$')]
 
     fig = plt.figure(figsize = (100/25.4, 100/25.4))
     axs = [fig.add_subplot(311), fig.add_subplot(312), fig.add_subplot(313)]
@@ -191,10 +188,12 @@ def annual_cycles():
         ax.set_xlim(0, 11)
         ax.set_xticks(np.arange(0, 12, 1))
         if ax == axs[-1]:
-            ax.set_xticklabels(['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'])
+            ax.set_xticklabels(['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 
+                                'O', 'N', 'D'])
         else:
             ax.set_xticklabels([])
-        ax.text(-0.15, 0.95, t, horizontalalignment = 'left', transform = ax.transAxes);
+        ax.text(-0.15, 0.95, t, horizontalalignment = 'left', 
+                transform = ax.transAxes)
     axs[1].legend(handles = lgnd, ncol = 3, bbox_to_anchor = (0.5, 2.2),
                   loc = 'lower center', frameon = False)
     axs[0].set_ylabel('Strength [Sv]', fontsize = 6)
@@ -202,6 +201,7 @@ def annual_cycles():
                       fontsize = 6)
     axs[2].set_ylabel('$\\mathcal{B}$ \n [10$^{-8}$ m$^{2}$  s$^{-3}$]',
                       fontsize = 6)
+
     return fig, axs
 
 def interannual_time_series():
@@ -214,13 +214,14 @@ def interannual_time_series():
     from matplotlib.ticker import AutoMinorLocator
 
     lgnd = [Line2D([0], [0], color = 'k', lw = 1, label = '1$^{\circ}$'),
-            Line2D([0], [0], color = 'r', lw = 1, label = '025$^{\circ}$'),
-            Line2D([0], [0], color = 'b', lw = 1, label = '01$^{\circ}$'),
+            Line2D([0], [0], color = 'r', lw = 1, label = '0.25$^{\circ}$'),
+            Line2D([0], [0], color = 'b', lw = 1, label = '0.1$^{\circ}$'),
             mpatches.Patch(color = 'mistyrose', label = 'Strong events'),
             mpatches.Patch(color = 'lavender', label = 'Weak events')]
 
     fig = plt.figure(figsize = (190/25.4, 150/25.4))
-    axs = [fig.add_subplot(511), fig.add_subplot(512), fig.add_subplot(513), fig.add_subplot(514), fig.add_subplot(515)]
+    axs = [fig.add_subplot(511), fig.add_subplot(512), fig.add_subplot(513), 
+           fig.add_subplot(514), fig.add_subplot(515)]
     plt.subplots_adjust(wspace = 0, hspace = 0)
     for i in range(0, 4):
         axs[i].spines['bottom'].set_visible(False)
@@ -228,7 +229,8 @@ def interannual_time_series():
         axs[i].set_xticklabels([])
         axs[i].tick_params(bottom = False)
     for ax, t in zip(axs, ['a)', 'b)', 'c)', 'd)', 'e)']):
-        ax.text(0.01, 0.8, t, horizontalalignment = 'left', transform = ax.transAxes, fontsize = 8)
+        ax.text(0.01, 0.8, t, horizontalalignment = 'left', 
+                transform = ax.transAxes, fontsize = 8)
     axs[0].legend(handles = lgnd, ncol = 5, bbox_to_anchor = (0.5, 1.02),
                   loc = 'lower center', frameon = False, fontsize = 8)
     axs[0].set_ylabel('Strength \n [Sv]', fontsize = 8)
@@ -240,6 +242,6 @@ def interannual_time_series():
     axs[4].set_ylabel('EAS \n index', fontsize = 8)
     axs[4].set_xticks(np.arange(12*2, 61*12+12, 12*5))
     axs[4].set_xticklabels(np.arange(1960, 2020, 5))
-    axs[4].xaxis.set_minor_locator(AutoMinorLocator(n = 5));
+    axs[4].xaxis.set_minor_locator(AutoMinorLocator(n = 5))
 
     return fig, axs

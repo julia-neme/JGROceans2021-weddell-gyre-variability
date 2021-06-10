@@ -6,25 +6,24 @@
 # Email         : j.neme@unsw.edu.au
 ###############################################################################
 
+import numpy as np
+import xarray as xr
 
 ###############################################################################
 
 def calculate_buoyancy_flux():
 
-    import numpy as np
-    import xarray as xr
-
     bflu = {}
     for k in keys:
 
-        net_sfc_heating = xr.open_dataset(wdir+'/raw_outputs/net_sfc_heating-monthly-1958_2018-'+k+'deg.nc')['net_sfc_heating']
-        frazil_3d_int_z = xr.open_dataset(wdir+'/raw_outputs/frazil_3d_int_z-monthly-1958_2018-'+k+'deg.nc')['frazil_3d_int_z']
-        pme_river = xr.open_dataset(wdir+'/raw_outputs/pme_river-monthly-1958_2018-'+k+'deg.nc')['pme_river']
-        pme_river = xr.open_dataset(wdir+'/raw_outputs/sfc_sal_flux_ice-monthly-1958_2018-'+k+'deg.nc')['sfc_sal_flux_ice']
-        pme_river = xr.open_dataset(wdir+'/raw_outputs/sfc_sal_flux_ice_restore-monthly-1958_2018-'+k+'deg.nc')['sfc_sal_flux_restore']
+        net_sfc_heating = xr.open_dataset(wdir+'/data/net_sfc_heating-monthly-1958_2018-'+k+'deg.nc')['net_sfc_heating']
+        frazil_3d_int_z = xr.open_dataset(wdir+'/data/frazil_3d_int_z-monthly-1958_2018-'+k+'deg.nc')['frazil_3d_int_z']
+        pme_river = xr.open_dataset(wdir+'/data/pme_river-monthly-1958_2018-'+k+'deg.nc')['pme_river']
+        pme_river = xr.open_dataset(wdir+'/data/sfc_sal_flux_ice-monthly-1958_2018-'+k+'deg.nc')['sfc_sal_flux_ice']
+        pme_river = xr.open_dataset(wdir+'/data/sfc_sal_flux_ice_restore-monthly-1958_2018-'+k+'deg.nc')['sfc_sal_flux_restore']
 
-        temp = xr.open_dataset(wdir+'/raw_outputs/temp-monthly-1958_2018-'+k+'deg.nc')['temp'].isel(st_ocean = 0)-273.15
-        salt = xr.open_dataset(wdir+'/raw_outputs/salt-monthly-1958_2018-'+k+'deg.nc')['salt'].isel(st_ocean = 0)
+        temp = xr.open_dataset(wdir+'/data/temp-monthly-1958_2018-'+k+'deg.nc')['temp'].isel(st_ocean = 0)-273.15
+        salt = xr.open_dataset(wdir+'/data/salt-monthly-1958_2018-'+k+'deg.nc')['salt'].isel(st_ocean = 0)
         salt_abs = gsw.SA_from_SP(salt, 0, salt['xt_ocean'], salt['yt_ocean'])
         alpha = gsw.alpha(salt_abs, temp, 0)
         rho = gsw.rho(salt_abs, temp, 0)
@@ -32,7 +31,7 @@ def calculate_buoyancy_flux():
 
         bflu[k] = (9.8*alpha)/(3850*rho)*(net_sfc_heating + frazil_3d_int_z) + 9.8*beta*(((pme_river - sfc_sal_flux_ice - sfc_sal_flux_restore))/1000)*salt_abs
         bflu[k] = xr.DataArray(bflu[k], name = 'buoyancy_flux')
-        bflu[k].to_netcdf(wdir+'/bflux-monthly-1958_2018-'+k+'deg.nc')
+        bflu[k].to_netcdf(wdir+'/data/bflux-monthly-1958_2018-'+k+'deg.nc')
 
 def g02202_aice(month):
 
@@ -57,24 +56,24 @@ def g02202_aice(month):
     if month == 'feb':
         cset = plt.contour(aice['longitude'], aice['latitude'],
                            aice.isel(month = 1), levels = [0.15])
-        siex = np.array([cset.allsegs[0][5][:,0], cset.allsegs[0][5][:,1]])
+        SIE = np.array([cset.allsegs[0][5][:,0], cset.allsegs[0][5][:,1]])
         plt.close('all')
-        srt = siex[0,:].argsort()
-        siex = np.array([siex[0, srt], siex[1, srt]])
+        srt = SIE[0, :].argsort()
+        SIE = np.array([SIE[0, srt], SIE[1, srt]])
+
     elif month == 'sep':
         cset = plt.contour(aice['longitude'], aice['latitude'],
                            aice.isel(month = 9), levels = [0.15])
-        siex = np.array([cset.allsegs[0][3][:,0], cset.allsegs[0][3][:,1]])
+        SIE = np.array([cset.allsegs[0][3][:,0], cset.allsegs[0][3][:,1]])
         plt.close('all')
-        srt = siex[0,:].argsort()
-        siex = np.array([siex[0, srt], siex[1, srt]])
+        srt = SIE[0, :].argsort()
+        SIE = np.array([SIE[0, srt], SIE[1, srt]])
 
-    return siex
+    return SIE
 
 def hyd_lat_lon():
 
     import os
-    import xarray as xr
     from glob import glob
     from joblib import Parallel, delayed
 
@@ -94,14 +93,7 @@ def hyd_lat_lon():
 
 def load_sea_level(keys, wdir):
 
-    import xarray as xr
-
-    """
-    Returns sea level from obs and model interpolated to the obs grid, with the
-    artificial global annual cycle removed and an offset applied.
-    """
-
-    obs = xr.open_dataset(wdir+'/observations/CS2_combined_Southern_Ocean_2011-2016_regridded.nc')
+    obs = xr.open_dataset(wdir+'/data/CS2_combined_Southern_Ocean_2011-2016_regridded.nc')
     obs = obs.rename(({'X':'xt_ocean', 'Y':'yt_ocean', 'date':'time'}))
     obs = obs.sortby('yt_ocean', ascending = True)
     obs['_lon_adj'] = xr.where(obs['xt_ocean'] > 80, obs['xt_ocean'] - 360,
@@ -112,11 +104,11 @@ def load_sea_level(keys, wdir):
 
     mod = {}
     for k in keys:
-        mod[k] = xr.open_dataset(wdir+'/raw_outputs/sea_level-monthly-2011_2016-'+k+'deg.nc')['sea_level']
+        mod[k] = xr.open_dataset(wdir+'/data/sea_level-monthly-2011_2016-'+k+'deg.nc')['sea_level']
         mod[k] = mod[k].sel(time = slice('2011-01-01', '2017-01-01'))
         mod[k] = mod[k]*100
         # Filter an artifical global sea level annual cycle
-        etag = xr.open_dataset(wdir+'/raw_outputs/eta_global-monthly-1958_2018-'+k+'deg.nc')['eta_global'].squeeze()
+        etag = xr.open_dataset(wdir+'/data/eta_global-monthly-1958_2018-'+k+'deg.nc')['eta_global'].squeeze()
         etag = etag.groupby('time.month').mean(dim = 'time')*100
         mod[k] = mod[k].groupby('time.month') - etag
         # Offset
@@ -135,11 +127,10 @@ def load_sea_level(keys, wdir):
 def gyre_boundary(keys, wdir, field):
 
     import matplotlib.pyplot as plt
-    import xarray as xr
 
     bndy = {}
     for k in keys:
-        psib = xr.open_dataset(wdir+'/der_outputs/psi_b-monthly-1958_2018-'+k+'deg.nc')
+        psib = xr.open_dataset(wdir+'/data/psi_b-monthly-1958_2018-'+k+'deg.nc')
         if field == 'mean':
             psib = psib['psi_b'].mean(dim = 'time')
             cset = plt.contour(psib['xu_ocean'], psib['yt_ocean'], psib,
@@ -161,25 +152,12 @@ def gyre_boundary(keys, wdir, field):
             bndy_djf = cset.allsegs[0][0]
             plt.close('all')
             bndy = [bndy_djf, bndy_jja]
+
     return bndy
 
-
-def edof_scott(A):
-    import xarray as xr
-    import numpy as np
-    import dask as dsk
-    axis = 0 # Generally 'time' is axis zero, or use A.get_axis_num('time')
-    edof = dsk.array.apply_along_axis(edof_1d, axis, A)
-    return np.nanmean(edof)
-
 def edof(A):
-    """
-    Calculates effective degrees of freedom using the integral timescale as per
-    Emery and Thompson's book.
-    """
+    
     import dask as dsk
-    import numpy as np
-    import xarray as xr
     from scipy import integrate
 
     def edof_1d(A):
@@ -203,16 +181,11 @@ def edof(A):
         axis = 0
         edof_matrix = dsk.array.apply_along_axis(edof_1d, axis, A)
         edof = np.nanmean(edof_matrix).compute()
+
     return edof
 
 def linear_correlation(A, B, *, lagB = False):
-
-    """
-    Calculates correlation coefficient from linear regression and associated
-    pvalues according to a t-student. Input can be 1D or 2D.
-    """
-    import numpy as np
-    import xarray as xr
+    
     from scipy.stats import t
 
     edof_A = edof(A)
@@ -239,13 +212,12 @@ def linear_correlation(A, B, *, lagB = False):
 def load_temp_salt_hydrography():
 
     import gsw
-    import numpy as np
     import os
-    import xarray as xr
     from glob import glob
     from joblib import Parallel, delayed
 
     def temp_parallel(file_name):
+
         prof = xr.open_dataset(file_name)
         if 'CTDTMP' in prof.data_vars:
             temp_name = 'CTDTMP'
@@ -262,8 +234,11 @@ def load_temp_salt_hydrography():
                                   prof['longitude'].values,
                                   prof['latitude'].values)
         pot_temp = gsw.pt0_from_t(salt_abs, temp, np.arange(0, 6000, 10))
+
         return pot_temp.values
+
     def salt_parallel(file_name):
+
         prof = xr.open_dataset(file_name)
         if 'CTDSAL' in prof:
             salt_name = 'CTDSAL'
@@ -272,22 +247,31 @@ def load_temp_salt_hydrography():
         salt = prof[salt_name]
         p_unq, p_unq_idx = np.unique(prof['pressure'], return_index = True)
         salt = salt[p_unq_idx].interp(pressure = np.arange(0, 6000, 10))
+
         return salt.values
+    
     def time_parallel(file_name):
+     
         prof = xr.open_dataset(file_name)
         year = prof['time.year'].item()
         mnth = prof['time.month'].item()
+    
         return year, mnth
+    
     def lat_parallel(file_name):
+    
         lat = xr.open_dataset(file_name)['latitude']
+    
         return lat.values
+    
     def lon_parallel(file_name):
+    
         lon = xr.open_dataset(file_name)['longitude']
+    
         return lon.values
 
-    # HAVE TO SEE HOW I MAKE THESE AVAILABLE
     fils = [y for x in os.walk('/scratch/e14/jn8053/cchdo_hydrography/')
-             for y in glob(os.path.join(x[0], '*.nc'))]
+              for y in glob(os.path.join(x[0], '*.nc'))]
     pott = Parallel(n_jobs = -1)(delayed(temp_parallel)(file) for file in fils)
     salt = Parallel(n_jobs = -1)(delayed(salt_parallel)(file) for file in fils)
     yrmh = Parallel(n_jobs = -1)(delayed(time_parallel)(file) for file in fils)
@@ -320,15 +304,13 @@ def load_temp_salt_hydrography():
 def load_temp_salt_model(key, wdir, ts_hydro):
 
     import gsw
-    import numpy as np
-    import xarray as xr
-    # CORRECT HOW WE LOAD..
+    
     if key == '01':
-        temp = xr.open_dataset(wdir+'/raw_outputs/pot_temp_hydrography-'+key+'deg.nc')['pot_temp'] - 273.15
-        salt = xr.open_dataset(wdir+'/raw_outputs/salt_hydrography-'+key+'deg.nc')['salt']
+        temp = xr.open_dataset(wdir+'/data/pot_temp_hydrography-'+key+'deg.nc')['pot_temp'] - 273.15
+        salt = xr.open_dataset(wdir+'/data/salt_hydrography-'+key+'deg.nc')['salt']
     else:
-        temp = xr.open_dataset(wdir+'/raw_outputs/pot_temp-monthly-1958_2018-'+key+'deg.nc')['pot_temp'] - 273.15
-        salt = xr.open_dataset(wdir+'/raw_outputs/salt-monthly-1958_2018-'+key+'deg.nc')['salt']
+        temp = xr.open_dataset(wdir+'/data/pot_temp-monthly-1958_2018-'+key+'deg.nc')['pot_temp'] - 273.15
+        salt = xr.open_dataset(wdir+'/data/salt-monthly-1958_2018-'+key+'deg.nc')['salt']
     yrmh = np.array([ts_hydro['year'].values, ts_hydro['month'].values])
     unqe = np.unique(yrmh, axis = 1)
     temp_times = temp.sel(time = str(unqe[0,0])+'-'+f'{unqe[1,0]:02}',
@@ -374,15 +356,14 @@ def load_temp_salt_model(key, wdir, ts_hydro):
 def a12_hydrography(wdir):
 
     import gsw
-    import numpy as np
     import os
-    import xarray as xr
     from metpy.interpolate import interpolate_to_points
     from glob import glob
     from joblib import Parallel, delayed
 
     def load_stations(directory):
-        prof = {}; n = 0;
+
+        prof = {}; n = 0
         file_names = [y for x in os.walk('/scratch/e14/jn8053/cchdo_hydrography/'+directory+'/')
                       for y in glob(os.path.join(x[0], '*.nc'))]
         file_names = np.sort(file_names)
@@ -405,14 +386,12 @@ def a12_hydrography(wdir):
                 salt_name = 'salinity'
             prof[n] = prof[n].rename({temp_name:'temp', salt_name:'salt'})
             n += 1
+
         return prof
 
     def interpolate_to_pressure(profiles, var_name):
 
         def get_shallow_stations(profiles, var, ht):
-            """
-            Drops stations shallower than 1000m from the array
-            """
             N = len(profiles)
             idx = []
             for st in range(0, N, 1):
@@ -420,10 +399,8 @@ def a12_hydrography(wdir):
                               yt_ocean = profiles[st]['latitude'],
                               method = 'nearest')
                 nans = np.isnan(var[:, st]).sum()
-                # Depth of deepest station
                 z = gsw.z_from_p(profiles[st]['pressure'][-1],
                                  profiles[st]['latitude'])
-                # Distance of deepest station from the bottom
                 dist = dpth - z.values
                 if nans > 0.8*dist:
                     idx.append(st)
@@ -469,10 +446,13 @@ def a12_hydrography(wdir):
 
             v = np.array([vf[0]-vi[0], vf[1]-vi[1]])
             u = np.transpose(np.array([u[0]-vi[0], u[1]-vi[1]]))
-            u_proj = [np.dot(u, v)/(np.sum(v**2))*v[0]+vi[0], np.dot(u, v)/(np.sum(v**2))*v[1]+vi[1]]
+            u_proj = [np.dot(u, v)/(np.sum(v**2))*v[0]+vi[0], 
+                      np.dot(u, v)/(np.sum(v**2))*v[1]+vi[1]]
+            
             return u_proj
 
         def distance_from_start_A12(x, y):
+            
             dist = [0]
             xini = -0
             yini = -50
@@ -484,7 +464,8 @@ def a12_hydrography(wdir):
 
         def projection_onto_A12(dset, var, st, p, x, y, xi, yi):
 
-            interpolated = interpolate_to_points((x, y), dset[var][p, st].values, (xi, yi), interp_type = 'nearest')
+            interpolated = interpolate_to_points((x, y), dset[var][p, st].values, 
+                            xi, yi), interp_type = 'nearest')
 
             return interpolated
 
@@ -493,16 +474,22 @@ def a12_hydrography(wdir):
             dist_coords = distance_from_start_A12(Xi[0], Xi[1])
             dist_interp = distance_from_start_A12(Xf[0], Xf[1])
             # Drop duplicates
-            dist_unique, dist_unique_idx = np.unique(dist_coords, return_index = True)
-
-            # Create an xarray with distance from start as coordinate. We will interpolate in this dimension
-            var_xarray = xr.DataArray(var_array[:, dist_unique_idx], name = var_name, dims = ['pressure', 'distance'], coords = {'pressure':pressure, 'distance':dist_unique})
-            var_interp_xarray = var_xarray.interp(distance = dist_interp, method = 'nearest')
+            dist_unique, dist_unique_idx = np.unique(dist_coords, 
+                                                    return_index = True)
+            var_xarray = xr.DataArray(var_array[:, dist_unique_idx], 
+                                      name = var_name, 
+                                      dims = ['pressure', 'distance'], 
+                                      coords = {'pressure':pressure, 
+                                                'distance':dist_unique})
+            var_interp_xarray = var_xarray.interp(distance = dist_interp, 
+                                                  method = 'nearest')
             # Change dimension distance for a station number
             var_interp_xarray['distance'] = np.arange(0, len(Xf[0]), 1)
             var_interp_xarray = var_interp_xarray.rename({'distance':'station'})
-            xf_xarray = xr.DataArray(Xf[0], name = 'lon', dims = ['station'], coords = {'station':var_interp_xarray['station']})
-            yf_xarray = xr.DataArray(Xf[1], name = 'lat', dims = ['station'], coords = {'station':var_interp_xarray['station']})
+            xf_xarray = xr.DataArray(Xf[0], name = 'lon', dims = ['station'], 
+                                     coords = {'station':var_interp_xarray['station']})
+            yf_xarray = xr.DataArray(Xf[1], name = 'lat', dims = ['station'], 
+                                     coords = {'station':var_interp_xarray['station']})
             dset_output = xr.merge([var_interp_xarray, xf_xarray, yf_xarray])
 
             return dset_output
@@ -528,21 +515,30 @@ def a12_hydrography(wdir):
             idx_A12 = np.delete(idx_A12, np.where(dist.values > 0.5)[0])
 
         # Project to A12 (Xori onto Xi)
-        dset_on_A12 = Parallel(n_jobs = -1)(delayed(projection_onto_A12)(dset, var, idx_A12, p, xori, yori, xi, yi) for p in range(len(dset['pressure'])))
+        dset_on_A12 = Parallel(n_jobs = -1)(delayed(projection_onto_A12)(dset, 
+                               var, idx_A12, p, xori, yori, xi, yi) 
+                               for p in range(len(dset['pressure'])))
         dset_on_A12 = np.squeeze(dset_on_A12)
 
         # Define a standard A12
         xf = np.zeros(20)
         yf = np.linspace(-69, -55, 20)
 
-        var_interp_xarray = interpolation_to_standard_A12(dset_on_A12, var, dset['pressure'], (xi, yi), (xf, yf))
-        var_uninterp_xarray = xr.DataArray(dset[var][:, idx_A12], name = var, dims = dset.dims, coords = {'pressure':dset['pressure'], 'station':idx_A12})
-        var_uninterp_xarray = xr.merge([var_uninterp_xarray, dset['lon'][idx_A12], dset['lat'][idx_A12], dset['time'][idx_A12]])
+        var_interp_xarray = interpolation_to_standard_A12(dset_on_A12, var, 
+                                                          dset['pressure'], 
+                                                          (xi, yi), (xf, yf))
+        var_uninterp_xarray = xr.DataArray(dset[var][:, idx_A12], name = var, 
+                                           dims = dset.dims, 
+                                           coords = {'pressure':dset['pressure'], 'station':idx_A12})
+        var_uninterp_xarray = xr.merge([var_uninterp_xarray, dset['lon'][idx_A12], 
+                                        dset['lat'][idx_A12], dset['time'][idx_A12]])
 
         return var_interp_xarray
 
-    direc = ['a12_nc_ctd', 's04a_nc_ctd', 'sr04_e_nc_ctd', 'a12_1999a_nc_ctd', '06AQ20050122_nc_ctd', '06AQ20071128_nc_ctd', '06AQ20080210_nc_ctd', '06AQ20101128', '06AQ20141202_nc_ctd']
-    ht = xr.open_dataset(wdir+'/raw_outputs/ocean_grid-01deg.nc')['ht']
+    direc = ['a12_nc_ctd', 's04a_nc_ctd', 'sr04_e_nc_ctd', 'a12_1999a_nc_ctd', 
+             '06AQ20050122_nc_ctd', '06AQ20071128_nc_ctd', '06AQ20080210_nc_ctd', 
+             '06AQ20101128', '06AQ20141202_nc_ctd']
+    ht = xr.open_dataset(wdir+'/data/ocean_grid-01deg.nc')['ht']
     ht = ht.sel(xt_ocean = slice(-30, 30), yt_ocean = slice(-80, 50))
     for d in direc:
         prof = load_stations(d)
@@ -564,7 +560,6 @@ def a12_hydrography(wdir):
 def a12_mean_pot_rho(dset, hydro_or_model):
 
     import gsw
-    import xarray as xr
 
     if hydro_or_model == 'hydrography':
         salt = dset['salt']
@@ -592,8 +587,6 @@ def a12_mean_pot_rho(dset, hydro_or_model):
 def a12_model(keys, hydro, wdir):
 
     import gsw
-    import numpy as np
-    import xarray as xr
 
     time_select = ['1992-06-15T00:00:00.000000000',
                    '1992-07-15T00:00:00.000000000',
@@ -614,10 +607,10 @@ def a12_model(keys, hydro, wdir):
                    '2011-01-15T00:00:00.000000000',
                    '2014-12-15T00:00:00.000000000',
                    '2015-01-15T00:00:00.000000000']
-    model = {};
+    model = {}
     for k in keys:
 
-        temp_access = xr.open_dataset(wdir+'/raw_outputs/pot_temp-monthly-A12-'+k+'deg.nc')['pot_temp'] - 273.15
+        temp_access = xr.open_dataset(wdir+'/data/pot_temp-monthly-A12-'+k+'deg.nc')['pot_temp'] - 273.15
         temp_t = temp_access.sel(time = time_select[0], method = 'nearest')
         for t in time_select[1:]:
             T = temp_access.sel(time = t, method = 'nearest')
@@ -629,7 +622,7 @@ def a12_model(keys, hydro, wdir):
         temp = temp.rename({'st_ocean':'pressure'})
         temp = temp.interp(pressure = np.arange(0, 6001, 1))
 
-        salt_access = xr.open_dataset(wdir+'/raw_outputs/salt-monthly-A12-'+k+'deg.nc')['salt']
+        salt_access = xr.open_dataset(wdir+'/data/salt-monthly-A12-'+k+'deg.nc')['salt']
         salt_t = salt_access.sel(time = time_select[0],  method = 'nearest')
         for t in time_select[1:]:
             S = salt_access.sel(time = t, method = 'nearest')
@@ -647,11 +640,11 @@ def a12_model(keys, hydro, wdir):
     return model
 
 def potential_vorticity(keys, wdir):
-    import numpy as np
-    import xarray as xr
+
     pvor = {}
     for k in keys:
-        ht = xr.open_dataset(wdir+'/raw_outputs/ocean_grid-'+k+'deg.nc')['ht'].sel(xt_ocean = slice(-70, 80), yt_ocean = slice(-80, -50))
+        ht = xr.open_dataset(wdir+'/data/ocean_grid-'+k+'deg.nc')['ht']
+        ht = ht.sel(xt_ocean = slice(-70, 80), yt_ocean = slice(-80, -50))
         pvor[k] = 2*7.292e-5*np.sin(ht['yt_ocean']*np.pi/180)/ht
 
     pvor['1'] = pvor['1'].rolling(xt_ocean = 2).mean().rolling(yt_ocean = 2).mean()
@@ -661,16 +654,14 @@ def potential_vorticity(keys, wdir):
 
 def gyre_strength(keys, wdir, timescale):
 
-    import numpy as np
-    import xarray as xr
-
     gstr = {}
     for k in keys:
-        psib = xr.open_dataset(wdir+'/der_outputs/psi_b-monthly-1958_2018-'+k+'deg.nc')
+        psib = xr.open_dataset(wdir+'/data/psi_b-monthly-1958_2018-'+k+'deg.nc')
         psib = psib.sel(xu_ocean = slice(-60, 10), yt_ocean = slice(-75, -57))
         if timescale == 'seasonal':
             psib = psib.groupby('time.month').mean(dim = 'time')
             gstr[k] = psib.min(dim = ['xu_ocean', 'yt_ocean'])
+
         elif timescale == 'interannual':
             gstr_c = psib.groupby('time.month').mean(dim = 'time')
             gstr_c = gstr_c.min(dim = ['xu_ocean', 'yt_ocean'])
@@ -682,31 +673,32 @@ def gyre_strength(keys, wdir, timescale):
 
 def wind_stress_curl(keys, wdir, timescale):
 
-    import numpy as np
-    import xarray as xr
-
     def curl(U, V):
+
         R = 6371e3
         f = 2*7.292e-5*np.sin(U['yu_ocean']*np.pi/180)
         mlon = np.pi/180*R*np.cos(np.deg2rad(U['yu_ocean']))
         mlat = np.pi/180*R
         C = V.differentiate('xu_ocean')/mlon - U.differentiate('yu_ocean')/mlat
         dset = xr.DataArray(C, name = 'sfc_stress_curl')
+
         return dset
 
     scrl = {}
     for k in keys:
-        taux = xr.open_dataset(wdir+'/raw_outputs/tau_x-monthly-1958_2018-'+k+'deg.nc')
+        taux = xr.open_dataset(wdir+'/data/tau_x-monthly-1958_2018-'+k+'deg.nc')
         taux = taux.sel(xu_ocean = slice(-60, 50), yu_ocean = slice(-75, -57))
-        tauy = xr.open_dataset(wdir+'/raw_outputs/tau_y-monthly-1958_2018-'+k+'deg.nc')
+        tauy = xr.open_dataset(wdir+'/data/tau_y-monthly-1958_2018-'+k+'deg.nc')
         tauy = tauy.sel(xu_ocean = slice(-60, 50), yu_ocean = slice(-75, -57))
-        hu = xr.open_dataset(wdir+'/raw_outputs/ocean_grid-'+k+'deg.nc')['hu']
+        hu = xr.open_dataset(wdir+'/data/ocean_grid-'+k+'deg.nc')['hu']
+
         if timescale == 'seasonal':
             taux = taux['tau_x'].groupby('time.month').mean(dim = 'time')
             tauy = tauy['tau_y'].groupby('time.month').mean(dim = 'time')
             scrl[k] = curl(taux, tauy)
             scrl[k] = scrl[k].where(hu > 1000).mean(dim = ['xu_ocean',
                                                            'yu_ocean'])
+
         elif timescale == 'interannual':
             scrl[k] = curl(taux['tau_x'], tauy['tau_y'])
             scrl[k] = scrl[k].where(hu > 1000).mean(dim = ['xu_ocean',
@@ -716,24 +708,25 @@ def wind_stress_curl(keys, wdir, timescale):
             scrl_c = scrl_c.where(hu > 1000).mean(dim = ['xu_ocean',
                                                          'yu_ocean'])
             scrl[k] = scrl[k].groupby('time.month') - scrl_c
+
     return scrl
 
 def buoyancy_flux(keys, wdir, timescale):
 
     import gsw
-    import numpy as np
-    import xarray as xr
 
     bflu = {}
     for k in keys:
         bflu[k] = xr.open_dataset(wdir+'/bflux-monthly-1958_2018-'+k+'deg.nc')['buoyancy_flux']
         bflu[k] = bflu[k].sel(xt_ocean = slice(-60, 50),
                             yt_ocean = slice(None, -57))
-        ht = xr.open_dataset(wdir+'/raw_outputs/ocean_grid-'+k+'deg.nc')['ht']
+        ht = xr.open_dataset(wdir+'/data/ocean_grid-'+k+'deg.nc')['ht']
+
         if timescale == 'seasonal':
             bflu[k] = bflu[k].groupby('time.month').mean(dim = 'time')
             bflu[k] = bflu[k].where(ht < 1000).mean(dim = ['xt_ocean',
                                                             'yt_ocean'])
+
         elif timescale == 'interannual':
             bflu_c = bflu[k].groupby('time.month').mean(dim = 'time')
             bflu_c = bflu_c.where(ht < 1000).mean(dim = ['xt_ocean',
@@ -746,38 +739,34 @@ def buoyancy_flux(keys, wdir, timescale):
 
 def psi_b_seasonal(keys, wdir):
 
-    import xarray as xr
     psib = {}
     for k in keys:
-        psib_t = xr.open_dataset(wdir+'/der_outputs/psi_b-monthly-1958_2018-'+k+'deg.nc')
+        psib_t = xr.open_dataset(wdir+'/data/psi_b-monthly-1958_2018-'+k+'deg.nc')
         psib[k] = psib_t['psi_b'].groupby('time.month').mean(dim = 'time')
         psib[k] = psib[k] - psib_t.mean(dim = 'time')
+
     return psib
 
 def slp_seasonal(wdir):
 
-    import xarray as xr
-
     slp = xr.open_dataset(wdir+'/forcing/psl-monthly-1958_2019.nc')['psl']
     slp = slp.isel(time = slice(None, -1))
     slp = slp.groupby('time.month').mean(dim = 'time')
+
     return slp
 
 def buoyancy_flux_seasonal(keys, wdir):
 
     import gsw
-    import numpy as np
-    import xarray as xr
 
     bflu = {}
     for k in keys:
         bflu[k] = xr.open_dataset(wdir+'/bflux-monthly-1958_2018-'+k+'deg.nc')['buoyancy_flux']
         bflu[k] = bflu[k].groupby('time.month').mean(dim = 'time')
+
     return bflu
 
 def sam_index(wdir):
-    import numpy as np
-    import xarray as xr
 
     slp = xr.open_dataset(wdir+'/forcing/psl-monthly-1958_2019.nc')['psl'].squeeze()
     slp = slp.sel(lat = slice(-80, -35),
@@ -796,8 +785,6 @@ def sam_index(wdir):
     return sam
 
 def eas_index(wdir):
-    import numpy as np
-    import xarray as xr
 
     slp = xr.open_dataset(wdir+'/forcing/psl-monthly-1958_2019.nc')['psl'].squeeze()
     slp = slp.sel(lat = slice(-80, -35),
@@ -816,9 +803,6 @@ def eas_index(wdir):
     return eas
 
 def get_events(gstr, wdir):
-
-    import numpy as np
-    import xarray as xr
 
     gstr_10rm = -gstr['gstr'].rolling(time = 120, center = True).mean()
     events_strg = np.where((-gstr['gstr'] - gstr_10rm) > 0.8*gstr_10rm.std())[0]
@@ -870,11 +854,9 @@ def get_events(gstr, wdir):
 def composites(events, variable, wdir):
 
     import gsw
-    import numpy as np
-    import xarray as xr
 
     if variable == 'psi_b':
-        psib = xr.open_dataset(wdir+'/der_outputs/psi_b-monthly-1958_2018-01deg.nc')
+        psib = xr.open_dataset(wdir+'/data/psi_b-monthly-1958_2018-01deg.nc')
         psib_c = psib['psi_b'].groupby('time.month').mean(dim = 'time')
         psib = psib.groupby('time.month') - psib_c
         var = psib.rolling(time = 12, center = True).mean()
@@ -903,14 +885,14 @@ def composites(events, variable, wdir):
         ind_events_strg = np.empty([7, 71, 267])
         ind_events_weak = np.empty([7, 71, 267])
     elif variable == 'aice':
-        aice = xr.open_dataset(wdir+'/raw_outputs/aice_m-monthly-1958_2018-01deg.nc')['aice_m']
+        aice = xr.open_dataset(wdir+'/data/aice_m-monthly-1958_2018-01deg.nc')['aice_m']
         aice_c =  aice.groupby('time.month').mean(dim = 'time')
         aice = aice.groupby('time.month') -aice_c
         var = aice.rolling(time = 12, center = True).mean()
         ind_events_strg = np.empty([7, 639, 1500])
         ind_events_weak = np.empty([7, 639, 1500])
     elif variable == 'tmax':
-        tmax = xr.open_dataset(wdir+'/der_outputs/sub_sfc_tmax-monthly-1958_2018-01deg.nc')['pot_temp']
+        tmax = xr.open_dataset(wdir+'/data/sub_sfc_tmax-monthly-1958_2018-01deg.nc')['pot_temp']
         tmax_c = tmax.groupby('time.month').mean(dim = 'time')
         tmax = tmax.groupby('time.month') - tmax_c
         var = tmax.rolling(time = 12, center = True).mean()
@@ -927,21 +909,18 @@ def composites(events, variable, wdir):
 
 def composites_correlations(gstr, variable, wdir):
 
-    import numpy as np
-    import xarray as xr
-
     if variable == 'bflux':
         bflu = xr.open_dataset(wdir+'/bflux-monthly-1958_2018-01deg.nc')['buoyancy_flux']
         bflu_c = bflu.groupby('time.month').mean(dim = 'time')
         bflu = bflu.groupby('time.month') - bflu_c
         var = bflu.rolling(time = 12, center = True).mean()
     elif variable == 'aice':
-        aice = xr.open_dataset(wdir+'/raw_outputs/aice_m-monthly-1958_2018-01deg.nc')['aice_m']
+        aice = xr.open_dataset(wdir+'/data/aice_m-monthly-1958_2018-01deg.nc')['aice_m']
         aice_c =  aice.groupby('time.month').mean(dim = 'time')
         aice = aice.groupby('time.month') -aice_c
         var = aice.rolling(time = 12, center = True).mean()
     elif variable == 'tmax':
-        tmax = xr.open_dataset(wdir+'/der_outputs/sub_sfc_tmax-monthly-1958_2018-01deg.nc')['pot_temp']
+        tmax = xr.open_dataset(wdir+'/data/sub_sfc_tmax-monthly-1958_2018-01deg.nc')['pot_temp']
         tmax_c = tmax.groupby('time.month').mean(dim = 'time')
         tmax = tmax.groupby('time.month') - tmax_c
         var = tmax.rolling(time = 12, center = True).mean()
